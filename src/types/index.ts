@@ -1,5 +1,5 @@
 export interface Category {
-  id: number;
+  id: string;
   name: string;
   slug: string;
   description?: string;
@@ -8,24 +8,35 @@ export interface Category {
 }
 
 export interface Product {
-  id: number;
+  id: string;
   name: string;
   slug: string;
   description?: string;
   price: number;
-  wholesale_price?: number;
-  minimum_wholesale_qty?: number;
+  compare_price?: number;
   stock: number;
+  condition: string;
   image_url?: string;
-  category_id: number;
+  images?: string[];
+  tags?: string[];
+  category_id: string;
   category?: Category;
-  featured: boolean;
-  active: boolean;
+  is_featured: boolean;
+  is_offer: boolean;
+  is_auction: boolean;
+  sku?: string;
+  brand?: string;
+  unit: string;
+  format?: string;
+  content_info?: string;
+  cost_price?: number;
+  margin?: number;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Customer {
-  id: number;
+  id: string;
   email: string;
   name: string;
   phone?: string;
@@ -35,8 +46,8 @@ export interface Customer {
 }
 
 export interface Order {
-  id: number;
-  customer_id: number;
+  id: string;
+  customer_id: string;
   customer?: Customer;
   status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
   total: number;
@@ -46,9 +57,9 @@ export interface Order {
 }
 
 export interface OrderItem {
-  id: number;
-  order_id: number;
-  product_id: number;
+  id: string;
+  order_id: string;
+  product_id: string;
   product?: Product;
   quantity: number;
   unit_price: number;
