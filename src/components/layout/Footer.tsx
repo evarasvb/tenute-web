@@ -20,7 +20,7 @@ export default function Footer() {
             <li><Link href="/" className="hover:text-white transition-colors">Inicio</Link></li>
             <li><Link href="/catalogo" className="hover:text-white transition-colors">Catálogo</Link></li>
             <li><Link href="/#mayorista" className="hover:text-white transition-colors">Mayorista</Link></li>
-            <li><Link href="/contacto" className="hover:text-white transition-colors">Contacto</Link></li>
+            <li><Link href="/politicas" className="hover:text-white transition-colors">Políticas de cambio y envío</Link></li>
           </ul>
         </div>
 
@@ -28,9 +28,17 @@ export default function Footer() {
         <div>
           <p className="text-white font-semibold text-sm mb-3 uppercase tracking-wide">Contacto</p>
           <ul className="flex flex-col gap-2 text-sm">
-            <li>📧 contacto@tenute.cl</li>
-            <li>📞 +56 9 XXXX XXXX</li>
-            <li>📍 Chile</li>
+            <li>
+              <a
+                href="https://wa.me/56987299147"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors inline-flex items-center gap-1"
+              >
+                📱 +569 87299147 (WhatsApp)
+              </a>
+            </li>
+            <li>📍 Feria de Hijuelas, Chile</li>
           </ul>
         </div>
       </div>

@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useCart } from '@/contexts/CartContext';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const { totalItems } = useCart();
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
@@ -26,26 +28,52 @@ export default function Navbar() {
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
           <Link href="/#categorias" className="hover:text-blue-600 transition-colors">Categorías</Link>
           <Link href="/#mayorista" className="hover:text-blue-600 transition-colors">Mayorista</Link>
-          <Link href="/contacto" className="hover:text-blue-600 transition-colors">Contacto</Link>
+          <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">Contacto</a>
         </nav>
 
-        {/* CTA */}
+        {/* CTA + Cart */}
         <div className="hidden md:flex items-center gap-3">
           <Link href="/catalogo" className="btn-primary text-sm">Ver catálogo</Link>
+          <Link href="/carro" className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Ver carro de compras">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+            {totalItems > 0 && (
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {totalItems > 99 ? '99+' : totalItems}
+              </span>
+            )}
+          </Link>
         </div>
 
-        {/* Mobile burger */}
-        <button
-          className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
-          onClick={() => setOpen(!open)}
-          aria-label="Abrir menú"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            {open
-              ? <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
-              : <path d="M3 12h18M3 6h18M3 18h18" strokeLinecap="round" />}
-          </svg>
-        </button>
+        {/* Mobile: cart + burger */}
+        <div className="md:hidden flex items-center gap-2">
+          <Link href="/carro" className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Ver carro de compras">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+            {totalItems > 0 && (
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                {totalItems > 99 ? '99+' : totalItems}
+              </span>
+            )}
+          </Link>
+          <button
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            onClick={() => setOpen(!open)}
+            aria-label="Abrir menú"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {open
+                ? <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" />
+                : <path d="M3 12h18M3 6h18M3 18h18" strokeLinecap="round" />}
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Mobile menu */}
@@ -54,8 +82,8 @@ export default function Navbar() {
           <nav className="flex flex-col gap-3 pt-3 text-sm font-medium text-gray-700">
             <Link href="/#categorias" onClick={() => setOpen(false)}>Categorías</Link>
             <Link href="/#mayorista" onClick={() => setOpen(false)}>Mayorista</Link>
-            <Link href="/contacto" onClick={() => setOpen(false)}>Contacto</Link>
-            <Link href="/catalogo" className="btn-primary mt-2 w-full text-center">Ver catálogo</Link>
+            <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Contacto</a>
+            <Link href="/catalogo" className="btn-primary mt-2 w-full text-center" onClick={() => setOpen(false)}>Ver catálogo</Link>
           </nav>
         </div>
       )}

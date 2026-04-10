@@ -15,20 +15,20 @@ export default function WholesaleBlock() {
           Mínimo de compra aplica. Cotiza sin compromiso.
         </p>
         <div className="flex flex-wrap justify-center gap-3">
-          <Link
-            href="/contacto"
-            className="inline-flex items-center gap-2 px-8 py-3 bg-white text-blue-700 font-bold rounded-lg hover:bg-blue-50 transition-colors"
-          >
-            Solicitar cotización
-          </Link>
           <a
-            href="https://wa.me/56912345678?text=Hola%2C%20quiero%20consultar%20precios%20mayoristas%20Tenute"
+            href="https://wa.me/56987299147?text=Hola%2C%20quiero%20consultar%20precios%20mayoristas%20Tenute"
             target="_blank"
             rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-8 py-3 bg-white text-blue-700 font-bold rounded-lg hover:bg-blue-50 transition-colors"
+          >
+            Solicitar cotización por WhatsApp
+          </a>
+          <Link
+            href="/catalogo"
             className="inline-flex items-center gap-2 px-8 py-3 border-2 border-white/60 text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
           >
-            WhatsApp
-          </a>
+            Ver catálogo
+          </Link>
         </div>
       </div>
     </section>

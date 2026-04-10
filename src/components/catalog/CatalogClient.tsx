@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { useCart } from '@/contexts/CartContext';
 
 interface Category {
   id: string;
@@ -28,22 +30,22 @@ function formatCLP(n: number) {
 
 export default function CatalogClient({
   categories,
-  brands,
 }: {
   categories: Category[];
-  brands: string[];
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { addItem } = useCart();
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [addedId, setAddedId] = useState<string | null>(null);
   const limit = 24;
 
   const search = searchParams.get('buscar') || '';
   const categorySlug = searchParams.get('categoria') || '';
-  const brand = searchParams.get('marca') || '';
+  const brand = searchParams.get('marca') || ''; // still used for internal search
 
   const categoryId = categories.find((c) => c.slug === categorySlug)?.id || '';
 
@@ -92,12 +94,25 @@ export default function CatalogClient({
     router.push(`/catalogo?${params.toString()}`);
   }
 
+  function handleAddToCart(p: Product) {
+    addItem({
+      id: p.id,
+      name: p.name,
+      price: p.price,
+      image_url: p.image_url,
+      slug: p.slug,
+      stock: p.stock,
+    });
+    setAddedId(p.id);
+    setTimeout(() => setAddedId(null), 1500);
+  }
+
   const totalPages = Math.ceil(total / limit);
 
   return (
     <div>
       {/* Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <input
           type="text"
           placeholder="Buscar productos..."
@@ -115,16 +130,6 @@ export default function CatalogClient({
           <option value="">Todas las categorías</option>
           {categories.map((c) => (
             <option key={c.slug} value={c.slug}>{c.name}</option>
-          ))}
-        </select>
-        <select
-          value={brand}
-          onChange={(e) => updateParam('marca', e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-        >
-          <option value="">Todas las marcas</option>
-          {brands.map((b) => (
-            <option key={b} value={b}>{b}</option>
           ))}
         </select>
         <div className="text-sm text-gray-500 flex items-center">
@@ -155,24 +160,27 @@ export default function CatalogClient({
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {products.map((p) => (
             <div key={p.id} className="card flex flex-col group hover:shadow-md transition-shadow">
-              <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
-                {p.image_url ? (
-                  <img
-                    src={p.image_url}
-                    alt={p.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    loading="lazy"
-                  />
-                ) : (
-                  <span className="text-4xl text-gray-300">📦</span>
-                )}
-              </div>
+              <Link href={`/producto/${p.slug}`} className="block">
+                <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden">
+                  {p.image_url ? (
+                    <img
+                      src={p.image_url}
+                      alt={p.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span className="text-4xl text-gray-300">📦</span>
+                  )}
+                </div>
+              </Link>
               <div className="p-3 flex flex-col gap-1 flex-1">
                 <span className="text-xs text-blue-600 font-medium">
-                  {(p.categories as any)?.name || p.brand || ''}
+                  {(p.categories as any)?.name || ''}
                 </span>
-                <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{p.name}</p>
-                {p.brand && <p className="text-xs text-gray-400">{p.brand}</p>}
+                <Link href={`/producto/${p.slug}`} className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2 hover:text-blue-600">
+                  {p.name}
+                </Link>
                 <div className="mt-auto pt-1">
                   {p.compare_price && p.compare_price > p.price ? (
                     <div className="flex items-baseline gap-1.5">
@@ -183,8 +191,19 @@ export default function CatalogClient({
                     <p className="text-base font-bold text-gray-900">{formatCLP(p.price)}</p>
                   )}
                 </div>
-                {p.stock <= 0 && (
+                {p.stock <= 0 ? (
                   <span className="text-xs text-red-500 font-medium">Agotado</span>
+                ) : (
+                  <button
+                    onClick={() => handleAddToCart(p)}
+                    className={`mt-1 w-full py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      addedId === p.id
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    }`}
+                  >
+                    {addedId === p.id ? 'Agregado' : 'Agregar al carro'}
+                  </button>
                 )}
               </div>
             </div>
