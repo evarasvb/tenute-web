@@ -45,14 +45,34 @@ export interface Customer {
   created_at: string;
 }
 
+export type OrderStatus = 'pending' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled';
+export type ShippingMethod = 'pickup' | 'local_delivery' | 'starken';
+export type PaymentMethod = 'mercadopago' | 'transfer' | 'whatsapp';
+
 export interface Order {
   id: string;
-  customer_id: string;
-  customer?: Customer;
-  status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+  order_number: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string;
+  customer_rut?: string;
+  shipping_address?: string;
+  shipping_commune?: string;
+  shipping_city?: string;
+  shipping_region?: string;
+  shipping_method: ShippingMethod;
+  shipping_cost: number;
+  subtotal: number;
   total: number;
+  status: OrderStatus;
+  payment_method: PaymentMethod;
+  payment_id?: string;
+  mercadopago_preference_id?: string;
+  tracking_number?: string;
+  admin_notes?: string;
   notes?: string;
   created_at: string;
+  updated_at?: string;
   items?: OrderItem[];
 }
 
@@ -60,8 +80,19 @@ export interface OrderItem {
   id: string;
   order_id: string;
   product_id: string;
-  product?: Product;
+  product_name: string;
+  product_sku?: string;
+  product_image_url?: string;
   quantity: number;
   unit_price: number;
   subtotal: number;
+  created_at?: string;
+}
+
+export interface ShippingZone {
+  id: string;
+  commune_name: string;
+  delivery_cost: number;
+  estimated_days: string;
+  is_active: boolean;
 }
