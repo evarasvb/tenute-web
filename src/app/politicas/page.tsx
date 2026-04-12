@@ -102,7 +102,7 @@ export default function PoliciesPage() {
               </li>
               <li className="flex gap-2">
                 <span className="text-blue-600 mt-0.5 flex-shrink-0">•</span>
-                <span><strong>Retiro en tienda</strong> disponible en Feria de Hijuelas (sin costo).</span>
+                <span><strong>Retiro en tienda</strong> disponible en Feria Agro Tahsa, Local 21, Segunda Calle, Hijuelas, V Región (sin costo).</span>
               </li>
             </ul>
           </section>

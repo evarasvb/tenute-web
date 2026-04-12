@@ -18,7 +18,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 const SHIPPING_LABELS: Record<string, string> = {
-  pickup: 'Retiro en tienda — Feria de Hijuelas',
+  pickup: 'Retiro en tienda — Feria Agro Tahsa, Local 21, Hijuelas',
   local_delivery: 'Despacho local',
   starken: 'Envío nacional (Starken)',
 };

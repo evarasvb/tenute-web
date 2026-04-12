@@ -92,6 +92,7 @@ export interface OrderItem {
 export interface ShippingZone {
   id: string;
   commune_name: string;
+  zone_type: 'local' | 'starken';
   delivery_cost: number;
   estimated_days: string;
   is_active: boolean;

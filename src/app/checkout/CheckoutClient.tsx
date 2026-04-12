@@ -6,6 +6,13 @@ import Link from 'next/link';
 import { useCart } from '@/contexts/CartContext';
 import type { ShippingZone } from '@/types';
 import { supabase } from '@/lib/supabase';
+import {
+  validateChileanPhone,
+  formatPhoneOnChange,
+  validateRUT,
+  formatRUTOnChange,
+  validateEmail,
+} from '@/lib/validators';
 
 function formatCLP(n: number) {
   return '$' + n.toLocaleString('es-CL');
@@ -27,11 +34,14 @@ interface ShippingInfo {
   address: string;
   city: string;
   region: string;
+  notes: string;
   cost: number;
   estimatedDays: string;
 }
 
 const STEPS = ['Datos', 'Envío', 'Resumen', 'Confirmación'];
+
+const FREE_DELIVERY_THRESHOLD = 50000;
 
 export default function CheckoutClient() {
   const router = useRouter();
@@ -39,7 +49,9 @@ export default function CheckoutClient() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [zones, setZones] = useState<ShippingZone[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [localZones, setLocalZones] = useState<ShippingZone[]>([]);
+  const [starkenRates, setStarkenRates] = useState<ShippingZone[]>([]);
   const [orderResult, setOrderResult] = useState<{
     order_number: string;
     id: string;
@@ -59,6 +71,7 @@ export default function CheckoutClient() {
     address: '',
     city: '',
     region: '',
+    notes: '',
     cost: 0,
     estimatedDays: '',
   });
@@ -70,7 +83,10 @@ export default function CheckoutClient() {
       .eq('is_active', true)
       .order('delivery_cost', { ascending: true })
       .then(({ data }) => {
-        if (data) setZones(data);
+        if (data) {
+          setLocalZones(data.filter((z) => z.zone_type === 'local'));
+          setStarkenRates(data.filter((z) => z.zone_type === 'starken'));
+        }
       });
   }, []);
 
@@ -82,20 +98,50 @@ export default function CheckoutClient() {
   }, [items, step, orderResult, router]);
 
   function validateStep0(): boolean {
+    const errors: Record<string, string> = {};
+
     if (!customer.name.trim()) {
-      setError('Ingresa tu nombre');
-      return false;
+      errors.name = 'Ingresa tu nombre';
     }
+
     if (!customer.phone.trim()) {
-      setError('Ingresa tu teléfono');
+      errors.phone = 'Ingresa tu teléfono';
+    } else {
+      const phoneResult = validateChileanPhone(customer.phone);
+      if (!phoneResult.valid) {
+        errors.phone = 'Ingresa un número de celular válido (ej: +569 8729 9147)';
+      }
+    }
+
+    if (customer.rut.trim()) {
+      const rutResult = validateRUT(customer.rut);
+      if (!rutResult.valid) {
+        errors.rut = 'RUT inválido. Verifica el número e intenta de nuevo.';
+      }
+    }
+
+    if (customer.email.trim() && !validateEmail(customer.email)) {
+      errors.email = 'Ingresa un email válido';
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError('Corrige los campos marcados');
       return false;
     }
-    // Basic Chilean phone validation
-    const phoneClean = customer.phone.replace(/\s/g, '');
-    if (!/^(\+?56)?[0-9]{8,9}$/.test(phoneClean)) {
-      setError('Ingresa un teléfono válido (ej: +569 87299147)');
-      return false;
+
+    // Auto-format valid fields
+    const phoneResult = validateChileanPhone(customer.phone);
+    if (phoneResult.valid) {
+      setCustomer((c) => ({ ...c, phone: phoneResult.formatted }));
     }
+    if (customer.rut.trim()) {
+      const rutResult = validateRUT(customer.rut);
+      if (rutResult.valid) {
+        setCustomer((c) => ({ ...c, rut: rutResult.formatted }));
+      }
+    }
+
     setError('');
     return true;
   }
@@ -105,17 +151,27 @@ export default function CheckoutClient() {
       setError('Selecciona un método de envío');
       return false;
     }
-    if (shipping.method === 'local_delivery' && !shipping.commune) {
-      setError('Selecciona tu comuna');
-      return false;
-    }
-    if (shipping.method === 'local_delivery' && !shipping.address.trim()) {
-      setError('Ingresa tu dirección de entrega');
-      return false;
+    if (shipping.method === 'local_delivery') {
+      if (!shipping.commune) {
+        setError('Selecciona tu comuna');
+        return false;
+      }
+      if (!shipping.address.trim()) {
+        setError('Ingresa tu dirección de entrega');
+        return false;
+      }
     }
     if (shipping.method === 'starken') {
-      if (!shipping.address.trim() || !shipping.commune.trim() || !shipping.city.trim() || !shipping.region.trim()) {
-        setError('Completa todos los campos de dirección');
+      if (!shipping.region) {
+        setError('Selecciona tu región');
+        return false;
+      }
+      if (!shipping.commune.trim()) {
+        setError('Ingresa tu ciudad/comuna');
+        return false;
+      }
+      if (!shipping.address.trim()) {
+        setError('Ingresa tu dirección');
         return false;
       }
     }
@@ -131,35 +187,70 @@ export default function CheckoutClient() {
 
   function handleBack() {
     setError('');
+    setFieldErrors({});
     setStep((s) => Math.max(s - 1, 0));
   }
 
   function selectShippingMethod(method: ShippingMethod) {
-    setShipping((prev) => ({
-      ...prev,
+    setShipping({
       method,
       commune: '',
       address: '',
       city: '',
       region: '',
-      cost: method === 'pickup' ? 0 : prev.cost,
-      estimatedDays: method === 'pickup' ? '' : prev.estimatedDays,
-    }));
+      notes: '',
+      cost: method === 'pickup' ? 0 : 0,
+      estimatedDays: method === 'pickup' ? '' : '',
+    });
     setError('');
   }
 
   function selectLocalCommune(communeName: string) {
-    const zone = zones.find((z) => z.commune_name === communeName);
+    const zone = localZones.find((z) => z.commune_name === communeName);
+    if (!zone) return;
+
+    // Check if free delivery threshold applies
+    const isFreeZone = zone.delivery_cost === 0;
+    const isAboveThreshold = totalPrice >= FREE_DELIVERY_THRESHOLD;
+    const cost = isFreeZone ? 0 : isAboveThreshold ? 0 : zone.delivery_cost;
+
     setShipping((prev) => ({
       ...prev,
       commune: communeName,
-      cost: zone?.delivery_cost || 0,
-      estimatedDays: zone?.estimated_days || '',
+      cost,
+      estimatedDays: zone.estimated_days,
     }));
   }
 
+  function selectStarkenRegion(regionName: string) {
+    const rate = starkenRates.find((r) => r.commune_name === regionName);
+    if (!rate) return;
+    setShipping((prev) => ({
+      ...prev,
+      region: regionName,
+      cost: rate.delivery_cost,
+      estimatedDays: rate.estimated_days,
+    }));
+  }
+
+  // Calculate local delivery cost based on threshold
+  function getLocalDeliveryCost(): number {
+    if (shipping.method !== 'local_delivery') return 0;
+    const zone = localZones.find((z) => z.commune_name === shipping.commune);
+    if (!zone) return 0;
+    if (zone.delivery_cost === 0) return 0; // Always free zones
+    if (totalPrice >= FREE_DELIVERY_THRESHOLD) return 0;
+    return zone.delivery_cost;
+  }
+
   const shippingTotal =
-    shipping.method === 'starken' ? 0 : shipping.cost;
+    shipping.method === 'pickup'
+      ? 0
+      : shipping.method === 'local_delivery'
+      ? getLocalDeliveryCost()
+      : shipping.method === 'starken'
+      ? shipping.cost
+      : 0;
   const grandTotal = totalPrice + shippingTotal;
 
   async function placeOrder(paymentMethod: PaymentMethod) {
@@ -179,6 +270,7 @@ export default function CheckoutClient() {
         shipping_region: shipping.region.trim() || null,
         shipping_cost: shippingTotal,
         payment_method: paymentMethod,
+        notes: shipping.notes.trim() || null,
         items: items.map((item) => ({
           product_id: item.id,
           product_name: item.name,
@@ -214,7 +306,6 @@ export default function CheckoutClient() {
       const whatsappMsg = buildWhatsAppMessage(order, paymentMethod);
 
       if (paymentMethod === 'whatsapp') {
-        // Open WhatsApp with the order
         window.open(
           `https://wa.me/56987299147?text=${encodeURIComponent(whatsappMsg)}`,
           '_blank'
@@ -247,13 +338,17 @@ export default function CheckoutClient() {
     msg += `\n*Subtotal:* ${formatCLP(totalPrice)}`;
 
     if (order.shipping_method === 'pickup') {
-      msg += '\n*Envío:* Retiro en tienda (Feria de Hijuelas)';
+      msg += '\n*Envío:* Retiro en tienda (Feria Agro Tahsa, Local 21, Hijuelas)';
     } else if (order.shipping_method === 'local_delivery') {
-      msg += `\n*Envío:* Despacho local a ${shipping.commune} — ${shipping.cost > 0 ? formatCLP(shipping.cost) : 'Gratis'}`;
+      msg += `\n*Envío:* Despacho local a ${shipping.commune} — ${shippingTotal > 0 ? formatCLP(shippingTotal) : 'Gratis'}`;
       msg += `\n*Dirección:* ${shipping.address}`;
     } else {
-      msg += '\n*Envío:* Nacional (Starken) — Por cotizar';
-      msg += `\n*Dirección:* ${shipping.address}, ${shipping.commune}, ${shipping.city}, ${shipping.region}`;
+      msg += `\n*Envío:* Nacional (Starken) a ${shipping.region} — ${formatCLP(shippingTotal)}`;
+      msg += `\n*Dirección:* ${shipping.address}, ${shipping.commune}, ${shipping.city ? shipping.city + ', ' : ''}${shipping.region}`;
+    }
+
+    if (shipping.notes) {
+      msg += `\n*Observaciones:* ${shipping.notes}`;
     }
 
     msg += `\n*Total:* ${formatCLP(grandTotal)}`;
@@ -279,23 +374,40 @@ export default function CheckoutClient() {
           <input
             type="text"
             value={customer.name}
-            onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
+            onChange={(e) => {
+              setCustomer((c) => ({ ...c, name: e.target.value }));
+              setFieldErrors((fe) => ({ ...fe, name: '' }));
+            }}
             placeholder="Juan Pérez"
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+              fieldErrors.name ? 'border-red-400' : 'border-gray-300'
+            }`}
           />
+          {fieldErrors.name && (
+            <p className="text-xs text-red-600 mt-1">{fieldErrors.name}</p>
+          )}
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Teléfono *
+            Teléfono celular *
           </label>
           <input
             type="tel"
             value={customer.phone}
-            onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))}
-            placeholder="+569 12345678"
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            onChange={(e) => {
+              const formatted = formatPhoneOnChange(e.target.value);
+              setCustomer((c) => ({ ...c, phone: formatted }));
+              setFieldErrors((fe) => ({ ...fe, phone: '' }));
+            }}
+            placeholder="+569 8729 9147"
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+              fieldErrors.phone ? 'border-red-400' : 'border-gray-300'
+            }`}
           />
+          {fieldErrors.phone && (
+            <p className="text-xs text-red-600 mt-1">{fieldErrors.phone}</p>
+          )}
         </div>
 
         <div>
@@ -305,10 +417,19 @@ export default function CheckoutClient() {
           <input
             type="text"
             value={customer.rut}
-            onChange={(e) => setCustomer((c) => ({ ...c, rut: e.target.value }))}
+            onChange={(e) => {
+              const formatted = formatRUTOnChange(e.target.value);
+              setCustomer((c) => ({ ...c, rut: formatted }));
+              setFieldErrors((fe) => ({ ...fe, rut: '' }));
+            }}
             placeholder="12.345.678-9"
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+              fieldErrors.rut ? 'border-red-400' : 'border-gray-300'
+            }`}
           />
+          {fieldErrors.rut && (
+            <p className="text-xs text-red-600 mt-1">{fieldErrors.rut}</p>
+          )}
         </div>
 
         <div>
@@ -318,10 +439,18 @@ export default function CheckoutClient() {
           <input
             type="email"
             value={customer.email}
-            onChange={(e) => setCustomer((c) => ({ ...c, email: e.target.value }))}
+            onChange={(e) => {
+              setCustomer((c) => ({ ...c, email: e.target.value }));
+              setFieldErrors((fe) => ({ ...fe, email: '' }));
+            }}
             placeholder="tu@email.com"
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
+              fieldErrors.email ? 'border-red-400' : 'border-gray-300'
+            }`}
           />
+          {fieldErrors.email && (
+            <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>
+          )}
         </div>
       </div>
     );
@@ -329,6 +458,8 @@ export default function CheckoutClient() {
 
   // ========== Step 1: Shipping ==========
   function renderStep1() {
+    const localCommuneList = localZones.map((z) => z.commune_name).join(', ');
+
     return (
       <div className="space-y-4">
         <h2 className="text-xl font-bold text-gray-900">Método de envío</h2>
@@ -346,7 +477,7 @@ export default function CheckoutClient() {
             <div>
               <p className="font-semibold text-gray-900">Retiro en tienda</p>
               <p className="text-sm text-gray-500 mt-0.5">
-                Feria de Hijuelas, Hijuelas, V Región
+                Feria Agro Tahsa, Local 21, Segunda Calle, Hijuelas, V Región
               </p>
             </div>
             <span className="text-sm font-bold text-green-600">Gratis</span>
@@ -363,10 +494,15 @@ export default function CheckoutClient() {
           }`}
         >
           <div>
-            <p className="font-semibold text-gray-900">Despacho local</p>
-            <p className="text-sm text-gray-500 mt-0.5">
-              Ocoa, Hijuelas, La Calera, La Cruz, Quillota, Nogales, Limache
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="font-semibold text-gray-900">Despacho local</p>
+              {totalPrice >= FREE_DELIVERY_THRESHOLD && (
+                <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                  GRATIS
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 mt-0.5">{localCommuneList}</p>
           </div>
         </button>
 
@@ -382,24 +518,35 @@ export default function CheckoutClient() {
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">Selecciona tu comuna</option>
-                {zones.map((zone) => (
-                  <option key={zone.id} value={zone.commune_name}>
-                    {zone.commune_name} —{' '}
-                    {zone.delivery_cost === 0
-                      ? 'Gratis'
-                      : formatCLP(zone.delivery_cost)}{' '}
-                    ({zone.estimated_days})
-                  </option>
-                ))}
+                {localZones.map((zone) => {
+                  const isFree = zone.delivery_cost === 0;
+                  const freeByThreshold = totalPrice >= FREE_DELIVERY_THRESHOLD;
+                  const displayCost = isFree || freeByThreshold ? 'Gratis' : formatCLP(zone.delivery_cost);
+                  return (
+                    <option key={zone.id} value={zone.commune_name}>
+                      {zone.commune_name} — {displayCost} ({zone.estimated_days})
+                    </option>
+                  );
+                })}
               </select>
             </div>
             {shipping.commune && (
               <div className="p-3 bg-green-50 border border-green-100 rounded-lg">
                 <p className="text-sm text-green-800">
                   <strong>Envío a {shipping.commune}:</strong>{' '}
-                  {shipping.cost === 0 ? 'Gratis' : formatCLP(shipping.cost)}
+                  {shippingTotal === 0 ? 'Gratis' : formatCLP(shippingTotal)}
                   {shipping.estimatedDays && ` — ${shipping.estimatedDays}`}
                 </p>
+                {totalPrice >= FREE_DELIVERY_THRESHOLD && localZones.find((z) => z.commune_name === shipping.commune)?.delivery_cost !== 0 && (
+                  <p className="text-xs text-green-700 mt-1">
+                    Despacho GRATIS por compra sobre {formatCLP(FREE_DELIVERY_THRESHOLD)}
+                  </p>
+                )}
+                {totalPrice < FREE_DELIVERY_THRESHOLD && shippingTotal > 0 && (
+                  <p className="text-xs text-green-700 mt-1">
+                    Despacho gratis en compras sobre {formatCLP(FREE_DELIVERY_THRESHOLD)}
+                  </p>
+                )}
               </div>
             )}
             <div>
@@ -414,6 +561,21 @@ export default function CheckoutClient() {
                 }
                 placeholder="Calle, número, depto/casa"
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Observaciones{' '}
+                <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <textarea
+                value={shipping.notes}
+                onChange={(e) =>
+                  setShipping((s) => ({ ...s, notes: e.target.value }))
+                }
+                placeholder="Ej: depto 302, dejar en conserjería, horario preferido"
+                rows={2}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white resize-none"
               />
             </div>
           </div>
@@ -433,19 +595,43 @@ export default function CheckoutClient() {
               Envío nacional (Starken)
             </p>
             <p className="text-sm text-gray-500 mt-0.5">
-              Despacho a todo Chile
+              Despacho a todo Chile — desde {formatCLP(4500)}
             </p>
           </div>
         </button>
 
         {shipping.method === 'starken' && (
           <div className="ml-4 space-y-3 border-l-2 border-blue-200 pl-4">
-            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg">
-              <p className="text-sm text-amber-800">
-                El costo de envío será cotizado y confirmado por WhatsApp antes
-                de procesar tu pedido.
-              </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Región *
+              </label>
+              <select
+                value={shipping.region}
+                onChange={(e) => selectStarkenRegion(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">Selecciona tu región</option>
+                {starkenRates.map((rate) => (
+                  <option key={rate.id} value={rate.commune_name}>
+                    {rate.commune_name} — {formatCLP(rate.delivery_cost)} ({rate.estimated_days})
+                  </option>
+                ))}
+              </select>
             </div>
+
+            {shipping.region && (
+              <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Envío a {shipping.region}:</strong>{' '}
+                  {formatCLP(shipping.cost)} — {shipping.estimatedDays}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Costo referencial para paquetes hasta 5kg. Productos voluminosos pueden tener recargo.
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Dirección *
@@ -456,14 +642,14 @@ export default function CheckoutClient() {
                 onChange={(e) =>
                   setShipping((s) => ({ ...s, address: e.target.value }))
                 }
-                placeholder="Calle, número, depto/casa"
+                placeholder="Calle y número"
                 className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Comuna *
+                  Ciudad/Comuna *
                 </label>
                 <input
                   type="text"
@@ -477,7 +663,8 @@ export default function CheckoutClient() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ciudad *
+                  Ciudad{' '}
+                  <span className="text-gray-400 font-normal">(opcional)</span>
                 </label>
                 <input
                   type="text"
@@ -492,33 +679,18 @@ export default function CheckoutClient() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Región *
+                Observaciones / Notas de entrega{' '}
+                <span className="text-gray-400 font-normal">(opcional)</span>
               </label>
-              <select
-                value={shipping.region}
+              <textarea
+                value={shipping.notes}
                 onChange={(e) =>
-                  setShipping((s) => ({ ...s, region: e.target.value }))
+                  setShipping((s) => ({ ...s, notes: e.target.value }))
                 }
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                <option value="">Selecciona tu región</option>
-                <option value="Arica y Parinacota">Arica y Parinacota</option>
-                <option value="Tarapacá">Tarapacá</option>
-                <option value="Antofagasta">Antofagasta</option>
-                <option value="Atacama">Atacama</option>
-                <option value="Coquimbo">Coquimbo</option>
-                <option value="Valparaíso">Valparaíso</option>
-                <option value="Metropolitana">Metropolitana</option>
-                <option value="O'Higgins">O&apos;Higgins</option>
-                <option value="Maule">Maule</option>
-                <option value="Ñuble">Ñuble</option>
-                <option value="Biobío">Biobío</option>
-                <option value="Araucanía">Araucanía</option>
-                <option value="Los Ríos">Los Ríos</option>
-                <option value="Los Lagos">Los Lagos</option>
-                <option value="Aysén">Aysén</option>
-                <option value="Magallanes">Magallanes</option>
-              </select>
+                placeholder="Ej: depto 302, dejar en conserjería, horario de entrega preferido"
+                rows={2}
+                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white resize-none"
+              />
             </div>
           </div>
         )}
@@ -571,19 +743,13 @@ export default function CheckoutClient() {
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Envío</span>
             <span className="font-medium">
-              {shipping.method === 'starken'
-                ? 'Por cotizar'
-                : shippingTotal === 0
-                ? 'Gratis'
-                : formatCLP(shippingTotal)}
+              {shippingTotal === 0 ? 'Gratis' : formatCLP(shippingTotal)}
             </span>
           </div>
           <div className="border-t border-gray-200 pt-2 flex justify-between">
             <span className="text-base font-bold text-gray-900">Total</span>
             <span className="text-base font-bold text-gray-900">
-              {shipping.method === 'starken'
-                ? `${formatCLP(totalPrice)} + envío`
-                : formatCLP(grandTotal)}
+              {formatCLP(grandTotal)}
             </span>
           </div>
         </div>
@@ -594,24 +760,43 @@ export default function CheckoutClient() {
             <span className="text-gray-500">Cliente:</span>{' '}
             <strong>{customer.name}</strong> — {customer.phone}
           </p>
+          {customer.email && (
+            <p>
+              <span className="text-gray-500">Email:</span> {customer.email}
+            </p>
+          )}
+          {customer.rut && (
+            <p>
+              <span className="text-gray-500">RUT:</span> {customer.rut}
+            </p>
+          )}
           <p>
             <span className="text-gray-500">Envío:</span>{' '}
             {shipping.method === 'pickup' && (
-              <span>Retiro en tienda — Feria de Hijuelas</span>
+              <span>Retiro en tienda — Feria Agro Tahsa, Local 21, Hijuelas</span>
             )}
             {shipping.method === 'local_delivery' && (
               <span>
                 Despacho local a {shipping.commune}
                 {shipping.address && ` — ${shipping.address}`}
+                {shippingTotal === 0 ? ' (Gratis)' : ` (${formatCLP(shippingTotal)})`}
               </span>
             )}
             {shipping.method === 'starken' && (
               <span>
-                Envío nacional — {shipping.address}, {shipping.commune},{' '}
-                {shipping.city}, {shipping.region}
+                Envío nacional a {shipping.region} — {shipping.address}
+                {shipping.commune && `, ${shipping.commune}`}
+                {shipping.city && `, ${shipping.city}`}
+                {` (${formatCLP(shippingTotal)})`}
               </span>
             )}
           </p>
+          {shipping.notes && (
+            <p>
+              <span className="text-gray-500">Observaciones:</span>{' '}
+              {shipping.notes}
+            </p>
+          )}
         </div>
 
         {/* Payment Options */}
@@ -678,8 +863,8 @@ export default function CheckoutClient() {
                   Pagar por transferencia bancaria
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Cuenta RUT Banco Estado — Eduardo Varas — RUT 17.032.024-1
-                  — Cta. 17032024 — evaras@firmavb.cl
+                  Cuenta RUT Banco Estado — Solange Saavedra — RUT 13.468.914-5
+                  — tenute@gmail.com
                 </p>
               </div>
             </div>
@@ -787,12 +972,17 @@ export default function CheckoutClient() {
           </div>
         </div>
 
-        {orderResult.shipping_method === 'starken' && (
-          <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-800">
-            Te contactaremos por WhatsApp para confirmar el costo de envío antes
-            de procesar tu pedido.
+        {/* Transfer details */}
+        <div className="card p-5 text-left space-y-2">
+          <h3 className="text-sm font-semibold text-gray-700">Datos para transferencia</h3>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><strong>Nombre:</strong> Solange Andrea Saavedra Caerols</p>
+            <p><strong>RUT:</strong> 13.468.914-5</p>
+            <p><strong>Banco:</strong> Cuenta RUT Banco Estado</p>
+            <p><strong>Email:</strong> tenute@gmail.com</p>
+            <p><strong>Teléfono:</strong> +569 87299147</p>
           </div>
-        )}
+        </div>
 
         <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
           Para consultas sobre tu pedido, contáctanos por WhatsApp al{' '}

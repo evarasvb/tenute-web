@@ -1,11 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/types';
 
 function formatCLP(n: number) {
   return '$' + n.toLocaleString('es-CL');
+}
+
+function cleanPhone(phone: string): string {
+  const digits = phone.replace(/[^0-9]/g, '');
+  // Ensure it starts with 56
+  if (digits.startsWith('56')) return digits;
+  if (digits.startsWith('9') && digits.length === 9) return '56' + digits;
+  if (digits.startsWith('09') && digits.length === 10) return '56' + digits.slice(1);
+  return '56' + digits;
 }
 
 const STATUS_CONFIG: Record<
@@ -20,17 +29,8 @@ const STATUS_CONFIG: Record<
   cancelled: { label: 'Cancelado', color: 'text-red-700', bg: 'bg-red-100' },
 };
 
-const STATUS_ORDER: OrderStatus[] = [
-  'pending',
-  'paid',
-  'preparing',
-  'shipped',
-  'delivered',
-  'cancelled',
-];
-
 const SHIPPING_LABELS: Record<string, string> = {
-  pickup: 'Retiro en tienda — Feria de Hijuelas',
+  pickup: 'Retiro en tienda — Feria Agro Tahsa, Local 21, Hijuelas',
   local_delivery: 'Despacho local',
   starken: 'Envío nacional (Starken)',
 };
@@ -50,9 +50,14 @@ export default function AdminOrderDetailPage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [trackingNumber, setTrackingNumber] = useState('');
+  const [trackingInput, setTrackingInput] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [shippingCost, setShippingCost] = useState('');
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [labelPackages, setLabelPackages] = useState('1');
+  const [labelWeight, setLabelWeight] = useState('');
+  const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch(`/api/admin/orders/${params.id}`)
@@ -60,11 +65,9 @@ export default function AdminOrderDetailPage({
       .then((data) => {
         if (data.order) {
           setOrder(data.order);
-          setTrackingNumber(data.order.tracking_number || '');
+          setTrackingInput(data.order.tracking_number || '');
           setAdminNotes(data.order.admin_notes || '');
-          setShippingCost(
-            data.order.shipping_cost?.toString() || '0'
-          );
+          setShippingCost(data.order.shipping_cost?.toString() || '0');
         }
       })
       .catch(() => {})
@@ -85,21 +88,68 @@ export default function AdminOrderDetailPage({
         setOrder(data.order);
         setMessage('Pedido actualizado');
         setTimeout(() => setMessage(''), 3000);
+        return data.order;
       } else {
         setMessage('Error: ' + (data.error || 'desconocido'));
+        return null;
       }
     } catch {
       setMessage('Error de conexión');
+      return null;
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   }
 
-  function handleStatusChange(newStatus: OrderStatus) {
-    updateOrder({ status: newStatus });
+  function openWhatsApp(msg: string) {
+    if (!order) return;
+    const phone = cleanPhone(order.customer_phone);
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,
+      '_blank'
+    );
   }
 
-  function handleSaveTracking() {
-    updateOrder({ tracking_number: trackingNumber });
+  // === WhatsApp Workflow Buttons ===
+  async function handleConfirmPayment() {
+    const updated = await updateOrder({ status: 'paid' });
+    if (updated) {
+      openWhatsApp(
+        `Hola ${order!.customer_name}! Tu pedido ${order!.order_number} ha sido confirmado. Estamos preparando tu envío. Te avisaremos cuando esté listo. Gracias por comprar en Tenute!`
+      );
+    }
+  }
+
+  async function handleMarkPreparing() {
+    const updated = await updateOrder({ status: 'preparing' });
+    if (updated) {
+      openWhatsApp(
+        `Hola ${order!.customer_name}! Tu pedido ${order!.order_number} está siendo preparado para envío. Te notificaremos el número de seguimiento pronto.`
+      );
+    }
+  }
+
+  async function handleSendTracking() {
+    if (!trackingInput.trim()) return;
+    const updated = await updateOrder({
+      status: 'shipped',
+      tracking_number: trackingInput.trim(),
+    });
+    if (updated) {
+      setShowTrackingModal(false);
+      openWhatsApp(
+        `Hola ${order!.customer_name}! Tu pedido ${order!.order_number} ha sido despachado por Starken. Tu número de seguimiento es: ${trackingInput.trim()}. Puedes rastrear tu envío en: https://www.starken.cl/seguimiento Gracias por comprar en Tenute!`
+      );
+    }
+  }
+
+  async function handleMarkDelivered() {
+    const updated = await updateOrder({ status: 'delivered' });
+    if (updated) {
+      openWhatsApp(
+        `Hola ${order!.customer_name}! Tu pedido ${order!.order_number} ha sido entregado. Esperamos que disfrutes tu compra. Si necesitas algo, escríbenos al +569 87299147. Gracias por comprar en Tenute!`
+      );
+    }
   }
 
   function handleSaveNotes() {
@@ -111,24 +161,115 @@ export default function AdminOrderDetailPage({
     updateOrder({ shipping_cost: cost });
   }
 
-  function buildWhatsAppStatusMessage(): string {
-    if (!order) return '';
-    const statusLabels: Record<string, string> = {
-      pending: 'Pendiente',
-      paid: 'Pagado',
-      preparing: 'En preparación',
-      shipped: 'Enviado',
-      delivered: 'Entregado',
-      cancelled: 'Cancelado',
-    };
-    let msg = `Hola ${order.customer_name}, te informamos sobre tu pedido *${order.order_number}*:\n\n`;
-    msg += `Estado: *${statusLabels[order.status] || order.status}*\n`;
-    if (order.tracking_number) {
-      msg += `Número de seguimiento: *${order.tracking_number}*\n`;
+  function handlePrintLabel() {
+    setShowLabelModal(true);
+  }
+
+  function printLabel() {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow || !order) return;
+
+    const shippingMethodLabel =
+      order.shipping_method === 'starken'
+        ? 'Starken Normal'
+        : order.shipping_method === 'local_delivery'
+        ? 'Despacho Local'
+        : 'Retiro en Tienda';
+
+    const address = [
+      order.shipping_address,
+      order.shipping_commune,
+      order.shipping_city,
+      order.shipping_region,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    const itemsHtml = (order.items || [])
+      .map(
+        (item) =>
+          `<div style="padding:2px 0;">- ${item.product_name} x ${item.quantity}</div>`
+      )
+      .join('');
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Etiqueta ${order.order_number}</title>
+  <style>
+    @page { size: A5 landscape; margin: 8mm; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #000; }
+    .label {
+      width: 100%; max-width: 210mm; border: 2px solid #000;
+      padding: 0; page-break-after: always;
     }
-    msg += `Total: *${formatCLP(order.total)}*\n`;
-    msg += '\nGracias por tu compra en Tenute.';
-    return msg;
+    .section { padding: 8px 12px; border-bottom: 2px solid #000; }
+    .section:last-child { border-bottom: none; }
+    .header { display: flex; justify-content: space-between; align-items: center; }
+    .header .brand { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
+    .header .order-num { font-size: 16px; font-weight: bold; }
+    .sender { font-size: 11px; color: #444; }
+    .dest-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; margin-bottom: 4px; }
+    .dest-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+    .dest-address { font-size: 13px; margin-bottom: 2px; }
+    .dest-phone { font-size: 12px; }
+    .shipping-row { display: flex; gap: 24px; font-size: 13px; font-weight: bold; }
+    .items { font-size: 11px; }
+    .items-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; margin-bottom: 4px; }
+    .notes-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; margin-bottom: 2px; }
+    .notes { font-size: 11px; }
+    .tracking { font-size: 12px; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="label">
+    <div class="section">
+      <div class="header">
+        <div>
+          <div class="brand">TENUTE</div>
+          <div class="sender">Feria Agro Tahsa, Local 21</div>
+          <div class="sender">Segunda Calle, Hijuelas, V Región</div>
+          <div class="sender">+569 87299147</div>
+        </div>
+        <div class="order-num">PEDIDO ${order.order_number}</div>
+      </div>
+    </div>
+    <div class="section" style="min-height: 80px;">
+      <div class="dest-label">DESTINATARIO:</div>
+      <div class="dest-name">${order.customer_name}</div>
+      <div class="dest-address">${address || 'Sin dirección'}</div>
+      <div class="dest-phone">Tel: ${order.customer_phone}</div>
+    </div>
+    <div class="section">
+      <div class="shipping-row">
+        <span>ENVÍO: ${shippingMethodLabel}</span>
+        <span>BULTOS: ${labelPackages || '1'}</span>
+        ${labelWeight ? `<span>PESO APROX: ${labelWeight} kg</span>` : ''}
+      </div>
+    </div>
+    <div class="section">
+      <div class="items-label">CONTENIDO:</div>
+      <div class="items">${itemsHtml}</div>
+    </div>
+    ${
+      order.notes || order.tracking_number
+        ? `<div class="section">
+      ${order.notes ? `<div class="notes-label">OBSERVACIONES:</div><div class="notes">${order.notes}</div>` : ''}
+      ${order.tracking_number ? `<div class="tracking" style="margin-top:4px;"><strong>N° SEGUIMIENTO:</strong> ${order.tracking_number}</div>` : ''}
+    </div>`
+        : ''
+    }
+  </div>
+  <script>window.onload=function(){window.print();}</script>
+</body>
+</html>`);
+    printWindow.document.close();
+    setShowLabelModal(false);
   }
 
   if (loading) {
@@ -164,18 +305,8 @@ export default function AdminOrderDetailPage({
           href="/admin/orders"
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15 19l-7-7 7-7"
-            />
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
         <div className="flex-1">
@@ -192,9 +323,7 @@ export default function AdminOrderDetailPage({
             })}
           </p>
         </div>
-        <span
-          className={`px-3 py-1 rounded-full text-sm font-medium ${statusCfg.bg} ${statusCfg.color}`}
-        >
+        <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusCfg.bg} ${statusCfg.color}`}>
           {statusCfg.label}
         </span>
       </div>
@@ -217,46 +346,35 @@ export default function AdminOrderDetailPage({
         <div className="lg:col-span-2 space-y-6">
           {/* Customer Info */}
           <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Cliente
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Cliente</h3>
             <p className="text-sm">
               <span className="text-gray-500">Nombre:</span>{' '}
               <strong>{order.customer_name}</strong>
             </p>
             <p className="text-sm">
               <span className="text-gray-500">Teléfono:</span>{' '}
-              <a
-                href={`tel:${order.customer_phone}`}
-                className="text-blue-600 hover:underline"
-              >
+              <a href={`tel:${order.customer_phone}`} className="text-blue-600 hover:underline">
                 {order.customer_phone}
               </a>
             </p>
             {order.customer_email && (
               <p className="text-sm">
                 <span className="text-gray-500">Email:</span>{' '}
-                <a
-                  href={`mailto:${order.customer_email}`}
-                  className="text-blue-600 hover:underline"
-                >
+                <a href={`mailto:${order.customer_email}`} className="text-blue-600 hover:underline">
                   {order.customer_email}
                 </a>
               </p>
             )}
             {order.customer_rut && (
               <p className="text-sm">
-                <span className="text-gray-500">RUT:</span>{' '}
-                {order.customer_rut}
+                <span className="text-gray-500">RUT:</span> {order.customer_rut}
               </p>
             )}
           </div>
 
           {/* Shipping Info */}
           <div className="bg-white rounded-lg border border-gray-200 p-5 space-y-2">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Envío
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Envío</h3>
             <p className="text-sm">
               <span className="text-gray-500">Método:</span>{' '}
               {SHIPPING_LABELS[order.shipping_method] || order.shipping_method}
@@ -278,8 +396,14 @@ export default function AdminOrderDetailPage({
               <span className="text-gray-500">Pago:</span>{' '}
               {PAYMENT_LABELS[order.payment_method] || order.payment_method}
             </p>
+            {order.tracking_number && (
+              <p className="text-sm">
+                <span className="text-gray-500">Tracking:</span>{' '}
+                <strong>{order.tracking_number}</strong>
+              </p>
+            )}
 
-            {/* Update shipping cost for Starken */}
+            {/* Update shipping cost */}
             {order.shipping_method === 'starken' && (
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -307,35 +431,25 @@ export default function AdminOrderDetailPage({
 
           {/* Order Items */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Productos
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Productos</h3>
             <div className="space-y-3">
               {order.items?.map((item) => (
                 <div key={item.id} className="flex gap-3 items-center">
                   <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
                     {item.product_image_url ? (
-                      <img
-                        src={item.product_image_url}
-                        alt={item.product_name}
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={item.product_image_url} alt={item.product_name} className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-sm text-gray-300">📦</span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800">
-                      {item.product_name}
-                    </p>
+                    <p className="text-sm font-medium text-gray-800">{item.product_name}</p>
                     <p className="text-xs text-gray-500">
                       {formatCLP(item.unit_price)} x {item.quantity}
                       {item.product_sku && ` — SKU: ${item.product_sku}`}
                     </p>
                   </div>
-                  <p className="text-sm font-bold text-gray-900">
-                    {formatCLP(item.subtotal)}
-                  </p>
+                  <p className="text-sm font-bold text-gray-900">{formatCLP(item.subtotal)}</p>
                 </div>
               ))}
             </div>
@@ -347,11 +461,7 @@ export default function AdminOrderDetailPage({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Envío</span>
-                <span>
-                  {order.shipping_cost > 0
-                    ? formatCLP(order.shipping_cost)
-                    : 'Gratis'}
-                </span>
+                <span>{order.shipping_cost > 0 ? formatCLP(order.shipping_cost) : 'Gratis'}</span>
               </div>
               <div className="flex justify-between font-bold text-base pt-1">
                 <span>Total</span>
@@ -362,9 +472,7 @@ export default function AdminOrderDetailPage({
 
           {order.notes && (
             <div className="bg-white rounded-lg border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">
-                Notas del cliente
-              </h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Notas del cliente</h3>
               <p className="text-sm text-gray-600">{order.notes}</p>
             </div>
           )}
@@ -372,59 +480,99 @@ export default function AdminOrderDetailPage({
 
         {/* Right column - Actions */}
         <div className="space-y-6">
-          {/* Status Change */}
+          {/* Order Workflow Actions */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Cambiar estado
+              Acciones del pedido
             </h3>
             <div className="space-y-2">
-              {STATUS_ORDER.map((s) => {
-                const cfg = STATUS_CONFIG[s];
-                const isActive = order.status === s;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => handleStatusChange(s)}
-                    disabled={isActive || saving}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? `${cfg.bg} ${cfg.color} ring-2 ring-offset-1 ring-blue-400`
-                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 disabled:opacity-50'
-                    }`}
-                  >
-                    {cfg.label}
-                  </button>
-                );
-              })}
+              {/* Confirm Payment */}
+              <button
+                onClick={handleConfirmPayment}
+                disabled={saving || order.status !== 'pending'}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  order.status === 'pending'
+                    ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                    : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Confirmar pago
+              </button>
+
+              {/* Mark Preparing */}
+              <button
+                onClick={handleMarkPreparing}
+                disabled={saving || order.status !== 'paid'}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  order.status === 'paid'
+                    ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                    : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                </svg>
+                Marcar en preparación
+              </button>
+
+              {/* Send Tracking */}
+              <button
+                onClick={() => setShowTrackingModal(true)}
+                disabled={saving || (order.status !== 'preparing' && order.status !== 'paid')}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  order.status === 'preparing' || order.status === 'paid'
+                    ? 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+                    : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+                </svg>
+                Enviar tracking
+              </button>
+
+              {/* Mark Delivered */}
+              <button
+                onClick={handleMarkDelivered}
+                disabled={saving || order.status !== 'shipped'}
+                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  order.status === 'shipped'
+                    ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200'
+                    : 'bg-gray-50 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Marcar entregado
+              </button>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
+              Cada acción cambia el estado y abre WhatsApp con un mensaje al cliente.
             </div>
           </div>
 
-          {/* Tracking Number */}
+          {/* Print & Label */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Número de seguimiento
-            </h3>
-            <input
-              type="text"
-              value={trackingNumber}
-              onChange={(e) => setTrackingNumber(e.target.value)}
-              placeholder="Ej: 123456789"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
-            />
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Impresión</h3>
             <button
-              onClick={handleSaveTracking}
-              disabled={saving}
-              className="w-full px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              onClick={handlePrintLabel}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors"
             >
-              Guardar tracking
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+              Imprimir etiqueta de envío
             </button>
           </div>
 
           {/* Admin Notes */}
           <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Notas internas
-            </h3>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Notas internas</h3>
             <textarea
               value={adminNotes}
               onChange={(e) => setAdminNotes(e.target.value)}
@@ -441,50 +589,122 @@ export default function AdminOrderDetailPage({
             </button>
           </div>
 
-          {/* WhatsApp */}
-          <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              Comunicación
-            </h3>
-            <a
-              href={`https://wa.me/${order.customer_phone?.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(buildWhatsAppStatusMessage())}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-              </svg>
-              Enviar estado por WhatsApp
-            </a>
-
-            <button
-              onClick={() => window.print()}
-              className="w-full mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-                />
-              </svg>
-              Imprimir resumen
-            </button>
-          </div>
+          {/* Manual Status Override */}
+          <details className="bg-white rounded-lg border border-gray-200 p-5">
+            <summary className="text-sm font-semibold text-gray-700 cursor-pointer">
+              Cambio manual de estado
+            </summary>
+            <div className="mt-3 space-y-2">
+              {(['pending', 'paid', 'preparing', 'shipped', 'delivered', 'cancelled'] as OrderStatus[]).map((s) => {
+                const cfg = STATUS_CONFIG[s];
+                const isActive = order.status === s;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => updateOrder({ status: s })}
+                    disabled={isActive || saving}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? `${cfg.bg} ${cfg.color} ring-2 ring-offset-1 ring-blue-400`
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100 disabled:opacity-50'
+                    }`}
+                  >
+                    {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </details>
         </div>
       </div>
+
+      {/* Tracking Number Modal */}
+      {showTrackingModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Enviar número de seguimiento
+            </h3>
+            <input
+              type="text"
+              value={trackingInput}
+              onChange={(e) => setTrackingInput(e.target.value)}
+              placeholder="Número de seguimiento Starken"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              autoFocus
+            />
+            <p className="text-xs text-gray-500 mb-4">
+              Se cambiará el estado a &quot;Enviado&quot; y se enviará un WhatsApp al cliente con el tracking.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowTrackingModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSendTracking}
+                disabled={!trackingInput.trim() || saving}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                Enviar tracking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shipping Label Modal */}
+      {showLabelModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Imprimir etiqueta de envío
+            </h3>
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cantidad de bultos
+                </label>
+                <input
+                  type="number"
+                  value={labelPackages}
+                  onChange={(e) => setLabelPackages(e.target.value)}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Peso aproximado (kg) <span className="text-gray-400 font-normal">(opcional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={labelWeight}
+                  onChange={(e) => setLabelWeight(e.target.value)}
+                  placeholder="Ej: 2.5"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowLabelModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={printLabel}
+                className="flex-1 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800"
+              >
+                Imprimir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -44,7 +44,7 @@ export default function ShippingEstimator() {
         </div>
       )}
       <p className="mt-2 text-xs text-gray-400">
-        Retiro en tienda disponible en Feria de Hijuelas (sin costo)
+        Retiro en tienda disponible en Feria Agro Tahsa, Local 21, Hijuelas (sin costo)
       </p>
     </div>
   );

@@ -38,7 +38,7 @@ export default function Footer() {
                 📱 +569 87299147 (WhatsApp)
               </a>
             </li>
-            <li>📍 Feria de Hijuelas, Chile</li>
+            <li>📍 Feria Agro Tahsa, Local 21, Segunda Calle, Hijuelas, V Región</li>
           </ul>
         </div>
       </div>

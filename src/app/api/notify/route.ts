@@ -6,7 +6,7 @@ function formatCLP(amount: number): string {
 }
 
 const SHIPPING_METHOD_LABELS: Record<string, string> = {
-  pickup: 'Retiro en tienda — Feria de Hijuelas',
+  pickup: 'Retiro en tienda — Feria Agro Tahsa, Local 21, Hijuelas',
   local_delivery: 'Despacho local',
   starken: 'Envío nacional (Starken)',
 };
