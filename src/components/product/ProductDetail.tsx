@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/contexts/CartContext';
+import { getAdditionalImages, getVideoUrl, getYouTubeEmbedUrl } from '@/lib/product-metadata';
 
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
@@ -23,6 +24,8 @@ interface ProductDetailProps {
     unit: string | null;
     format: string | null;
     content_info: string | null;
+    metadata?: unknown;
+    video_url?: string | null;
   };
 }
 
@@ -32,6 +35,18 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const [added, setAdded] = useState(false);
 
   const inStock = product.stock > 0;
+
+  // Collect all images
+  const additionalImages = getAdditionalImages(product as unknown as Record<string, unknown>);
+  const allImages: string[] = [];
+  if (product.image_url) allImages.push(product.image_url);
+  allImages.push(...additionalImages);
+
+  const [selectedImage, setSelectedImage] = useState(0);
+
+  // Video
+  const videoUrl = getVideoUrl(product as unknown as Record<string, unknown>);
+  const youtubeEmbed = videoUrl ? getYouTubeEmbedUrl(videoUrl) : null;
 
   function handleAdd() {
     addItem({
@@ -61,12 +76,61 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       </nav>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Image */}
-        <div className="aspect-square bg-white rounded-xl border border-gray-100 overflow-hidden flex items-center justify-center">
-          {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-6xl text-gray-300">📦</span>
+        {/* Image Gallery */}
+        <div>
+          <div className="aspect-square bg-white rounded-xl border border-gray-100 overflow-hidden flex items-center justify-center">
+            {allImages.length > 0 ? (
+              <img
+                src={allImages[selectedImage]}
+                alt={product.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-6xl text-gray-300">📦</span>
+            )}
+          </div>
+
+          {/* Thumbnail strip */}
+          {allImages.length > 1 && (
+            <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+              {allImages.map((url, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSelectedImage(i)}
+                  className={`w-16 h-16 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-colors ${
+                    selectedImage === i ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Video */}
+          {youtubeEmbed && (
+            <div className="mt-4">
+              <div className="aspect-video bg-black rounded-xl overflow-hidden">
+                <iframe
+                  src={youtubeEmbed}
+                  title={`Video de ${product.name}`}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          )}
+          {videoUrl && !youtubeEmbed && (
+            <div className="mt-4">
+              <div className="aspect-video bg-black rounded-xl overflow-hidden">
+                <video
+                  src={videoUrl}
+                  controls
+                  className="w-full h-full"
+                />
+              </div>
+            </div>
           )}
         </div>
 

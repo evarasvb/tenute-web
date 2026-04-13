@@ -19,7 +19,7 @@ function formatCLP(n: number) {
 }
 
 type ShippingMethod = 'pickup' | 'local_delivery' | 'starken';
-type PaymentMethod = 'transfer' | 'whatsapp';
+type PaymentMethod = 'transfer' | 'whatsapp' | 'flow';
 
 interface CustomerInfo {
   name: string;
@@ -57,6 +57,8 @@ export default function CheckoutClient() {
     id: string;
     shipping_method: string;
   } | null>(null);
+  const [flowEnabled, setFlowEnabled] = useState(false);
+  const [flowLoading, setFlowLoading] = useState(false);
 
   const [customer, setCustomer] = useState<CustomerInfo>({
     name: '',
@@ -88,6 +90,14 @@ export default function CheckoutClient() {
           setStarkenRates(data.filter((z) => z.zone_type === 'starken'));
         }
       });
+  }, []);
+
+  // Check if Flow.cl is enabled
+  useEffect(() => {
+    fetch('/api/flow/status')
+      .then(r => r.json())
+      .then(data => setFlowEnabled(data.enabled))
+      .catch(() => {});
   }, []);
 
   // Redirect to cart if empty (except on confirmation step)
@@ -318,6 +328,86 @@ export default function CheckoutClient() {
       setError('Error de conexión. Intenta nuevamente.');
     }
     setLoading(false);
+  }
+
+  async function placeOrderWithFlow() {
+    setFlowLoading(true);
+    setError('');
+
+    try {
+      // First create the order
+      const orderData = {
+        customer_name: customer.name.trim(),
+        customer_phone: customer.phone.trim(),
+        customer_email: customer.email.trim() || null,
+        customer_rut: customer.rut.trim() || null,
+        shipping_method: shipping.method,
+        shipping_address: shipping.address.trim() || null,
+        shipping_commune: shipping.commune.trim() || null,
+        shipping_city: shipping.city.trim() || null,
+        shipping_region: shipping.region.trim() || null,
+        shipping_cost: shippingTotal,
+        payment_method: 'flow',
+        notes: shipping.notes.trim() || null,
+        items: items.map((item) => ({
+          product_id: item.id,
+          product_name: item.name,
+          product_sku: null,
+          product_image_url: item.image_url,
+          quantity: item.quantity,
+          unit_price: item.price,
+        })),
+      };
+
+      const orderRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData),
+      });
+
+      const orderResult = await orderRes.json();
+      if (!orderRes.ok) {
+        setError(orderResult.error || 'Error al crear el pedido');
+        setFlowLoading(false);
+        return;
+      }
+
+      const order = orderResult.order;
+
+      // Now create the Flow payment
+      const flowRes = await fetch('/api/flow/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          orderNumber: order.order_number,
+          amount: grandTotal,
+          email: customer.email || 'cliente@tenute.cl',
+        }),
+      });
+
+      const flowData = await flowRes.json();
+      if (!flowRes.ok) {
+        setError(flowData.error || 'Error al crear el pago con Flow');
+        // Order was created, redirect to order page
+        setOrderResult({
+          order_number: order.order_number,
+          id: order.id,
+          shipping_method: order.shipping_method,
+        });
+        clearCart();
+        setStep(3);
+        setFlowLoading(false);
+        return;
+      }
+
+      // Redirect to Flow payment page
+      clearCart();
+      window.location.href = flowData.paymentUrl;
+    } catch {
+      setError('Error de conexión. Intenta nuevamente.');
+    }
+    setFlowLoading(false);
   }
 
   function buildWhatsAppMessage(
@@ -805,12 +895,13 @@ export default function CheckoutClient() {
             Selecciona cómo pagar
           </h3>
 
-          {/* MercadoPago - Disabled */}
-          <button
-            disabled
-            className="w-full p-4 rounded-lg border-2 border-gray-200 bg-gray-50 cursor-not-allowed relative"
-          >
-            <div className="flex items-center justify-between opacity-50">
+          {/* Card Payment via Flow.cl */}
+          {flowEnabled ? (
+            <button
+              onClick={() => placeOrderWithFlow()}
+              disabled={loading || flowLoading}
+              className="w-full p-4 rounded-lg border-2 border-gray-200 hover:border-indigo-400 transition-colors text-left disabled:opacity-50"
+            >
               <div className="flex items-center gap-3">
                 <svg
                   width="20"
@@ -821,20 +912,52 @@ export default function CheckoutClient() {
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-sky-500"
+                  className="text-indigo-600"
                 >
                   <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
                   <line x1="1" y1="10" x2="23" y2="10" />
                 </svg>
-                <span className="font-medium text-gray-700">
-                  Pagar con MercadoPago
+                <div>
+                  <p className="font-medium text-gray-900">
+                    {flowLoading ? 'Procesando...' : 'Pagar con tarjeta'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Tarjeta de crédito o débito — Procesado por Flow.cl
+                  </p>
+                </div>
+              </div>
+            </button>
+          ) : (
+            <button
+              disabled
+              className="w-full p-4 rounded-lg border-2 border-gray-200 bg-gray-50 cursor-not-allowed relative"
+            >
+              <div className="flex items-center justify-between opacity-50">
+                <div className="flex items-center gap-3">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-sky-500"
+                  >
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                    <line x1="1" y1="10" x2="23" y2="10" />
+                  </svg>
+                  <span className="font-medium text-gray-700">
+                    Pagar con tarjeta
+                  </span>
+                </div>
+                <span className="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full">
+                  Próximamente
                 </span>
               </div>
-              <span className="text-xs bg-sky-100 text-sky-600 px-2 py-0.5 rounded-full">
-                Próximamente
-              </span>
-            </div>
-          </button>
+            </button>
+          )}
 
           {/* Transfer */}
           <button

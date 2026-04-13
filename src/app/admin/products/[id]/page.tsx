@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { getWarehouseStock, getAdditionalImages, getVideoUrl } from '@/lib/product-metadata';
 
 interface Category {
   id: string;
@@ -16,6 +17,8 @@ const EMPTY_PRODUCT = {
   price: 0,
   compare_price: 0,
   stock: 0,
+  stock_ocoa: 0,
+  stock_local21: 0,
   brand: '',
   category_id: '',
   condition: 'new',
@@ -27,7 +30,10 @@ const EMPTY_PRODUCT = {
   is_featured: false,
   is_offer: false,
   is_auction: false,
+  active: true,
   image_url: '',
+  additional_images: [] as string[],
+  video_url: '',
 };
 
 function formatCLP(n: number) {
@@ -61,6 +67,9 @@ export default function ProductEditorPage() {
         if (data.error) {
           setError('Producto no encontrado');
         } else {
+          const ws = getWarehouseStock(data);
+          const addlImages = getAdditionalImages(data);
+          const videoUrl = getVideoUrl(data);
           setProduct({
             name: data.name || '',
             slug: data.slug || '',
@@ -68,6 +77,8 @@ export default function ProductEditorPage() {
             price: data.price || 0,
             compare_price: data.compare_price || 0,
             stock: data.stock || 0,
+            stock_ocoa: ws.ocoa,
+            stock_local21: ws.local21,
             brand: data.brand || '',
             category_id: data.category_id || '',
             condition: data.condition || 'new',
@@ -79,7 +90,10 @@ export default function ProductEditorPage() {
             is_featured: data.is_featured || false,
             is_offer: data.is_offer || false,
             is_auction: data.is_auction || false,
+            active: data.active !== false,
             image_url: data.image_url || '',
+            additional_images: addlImages,
+            video_url: videoUrl || '',
           });
         }
         setLoading(false);
@@ -87,7 +101,7 @@ export default function ProductEditorPage() {
       .catch(() => { setError('Error cargando producto'); setLoading(false); });
   }, [id, isNew]);
 
-  function handleChange(field: string, value: string | number | boolean) {
+  function handleChange(field: string, value: string | number | boolean | string[]) {
     setProduct(prev => ({ ...prev, [field]: value }));
     setError('');
     setSuccess('');
@@ -102,21 +116,50 @@ export default function ProductEditorPage() {
       .replace(/(^-|-$)/g, '');
   }
 
+  // Auto-calculate total stock from warehouses
+  const totalStock = Number(product.stock_ocoa) + Number(product.stock_local21);
+
   async function handleSave() {
     setSaving(true);
     setError('');
     setSuccess('');
 
-    const payload = {
-      ...product,
+    const metadata = {
+      additional_images: product.additional_images.filter(Boolean),
+      video_url: product.video_url || undefined,
+      warehouse_stock: {
+        ocoa: Number(product.stock_ocoa) || 0,
+        local21: Number(product.stock_local21) || 0,
+      },
+    };
+
+    const payload: Record<string, unknown> = {
+      name: product.name,
+      slug: product.slug || generateSlug(product.name),
+      description: product.description || null,
       price: Number(product.price),
       compare_price: Number(product.compare_price) || null,
-      stock: Number(product.stock),
-      cost_price: Number(product.cost_price) || null,
-      slug: product.slug || generateSlug(product.name),
+      stock: totalStock,
+      brand: product.brand || null,
       category_id: product.category_id || null,
+      condition: product.condition,
+      sku: product.sku || null,
+      unit: product.unit || 'UN',
+      format: product.format || null,
+      content_info: product.content_info || null,
+      cost_price: Number(product.cost_price) || null,
+      is_featured: product.is_featured,
+      is_offer: product.is_offer,
+      is_auction: product.is_auction,
+      active: product.active,
       image_url: product.image_url || null,
+      metadata,
     };
+
+    // Try to save warehouse stock columns if they exist
+    payload.stock_ocoa = Number(product.stock_ocoa) || 0;
+    payload.stock_local21 = Number(product.stock_local21) || 0;
+    if (product.video_url) payload.video_url = product.video_url;
 
     try {
       let res;
@@ -136,7 +179,28 @@ export default function ProductEditorPage() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Error guardando');
+        // If error is about unknown columns, retry without them
+        if (data.error && (data.error.includes('stock_ocoa') || data.error.includes('stock_local21') || data.error.includes('video_url') || data.error.includes('metadata'))) {
+          delete payload.stock_ocoa;
+          delete payload.stock_local21;
+          delete payload.video_url;
+          delete payload.metadata;
+
+          const retryRes = await fetch(isNew ? '/api/admin/products' : `/api/admin/products/${id}`, {
+            method: isNew ? 'POST' : 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const retryData = await retryRes.json();
+          if (!retryRes.ok) {
+            setError(retryData.error || 'Error guardando');
+          } else {
+            setSuccess('Producto guardado (sin columnas extendidas — ejecutar migración SQL)');
+            if (isNew) router.push(`/admin/products/${retryData.id}`);
+          }
+        } else {
+          setError(data.error || 'Error guardando');
+        }
       } else {
         setSuccess('Producto guardado correctamente');
         if (isNew) {
@@ -158,7 +222,7 @@ export default function ProductEditorPage() {
     }
   }
 
-  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>, isAdditional = false) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -167,13 +231,17 @@ export default function ProductEditorPage() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('sku', sku);
+    formData.append('sku', isAdditional ? `${sku}-${Date.now()}` : sku);
 
     try {
       const res = await fetch('/api/admin/upload', { method: 'POST', body: formData });
       const data = await res.json();
       if (res.ok) {
-        handleChange('image_url', data.url);
+        if (isAdditional) {
+          handleChange('additional_images', [...product.additional_images, data.url]);
+        } else {
+          handleChange('image_url', data.url);
+        }
       } else {
         setError(data.error || 'Error subiendo imagen');
       }
@@ -181,7 +249,27 @@ export default function ProductEditorPage() {
       setError('Error subiendo imagen');
     }
     setUploading(false);
+    // Reset the file input
+    e.target.value = '';
   }
+
+  function removeAdditionalImage(index: number) {
+    const newImages = product.additional_images.filter((_, i) => i !== index);
+    handleChange('additional_images', newImages);
+  }
+
+  function moveImage(index: number, direction: 'up' | 'down') {
+    const arr = [...product.additional_images];
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= arr.length) return;
+    [arr[index], arr[newIndex]] = [arr[newIndex], arr[index]];
+    handleChange('additional_images', arr);
+  }
+
+  // Margin calculation
+  const margin = product.cost_price > 0
+    ? ((Number(product.price) - Number(product.cost_price)) / Number(product.cost_price) * 100).toFixed(1)
+    : null;
 
   if (loading) {
     return (
@@ -202,12 +290,17 @@ export default function ProductEditorPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-bold text-gray-900">
             {isNew ? 'Nuevo producto' : 'Editar producto'}
           </h2>
           {!isNew && <p className="text-sm text-gray-500">ID: {id}</p>}
         </div>
+        {!isNew && (
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${product.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {product.active ? 'Activo' : 'Inactivo'}
+          </span>
+        )}
       </div>
 
       {error && (
@@ -218,9 +311,9 @@ export default function ProductEditorPage() {
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
-        {/* Image */}
+        {/* Main Image */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Imagen</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Imagen principal</label>
           <div className="flex items-start gap-4">
             {product.image_url ? (
               <img src={product.image_url} alt="" className="w-32 h-32 rounded-lg object-cover border border-gray-200" />
@@ -235,7 +328,7 @@ export default function ProductEditorPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 {uploading ? 'Subiendo...' : 'Subir imagen'}
-                <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, false)} className="hidden" disabled={uploading} />
               </label>
               <input
                 type="text"
@@ -246,6 +339,69 @@ export default function ProductEditorPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Additional Images */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Imágenes adicionales <span className="text-gray-400 font-normal">(hasta 5)</span>
+          </label>
+          <div className="flex flex-wrap gap-3 mb-3">
+            {product.additional_images.map((url, i) => (
+              <div key={i} className="relative group">
+                <img src={url} alt="" className="w-24 h-24 rounded-lg object-cover border border-gray-200" />
+                <div className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                  {i > 0 && (
+                    <button
+                      onClick={() => moveImage(i, 'up')}
+                      className="p-1 bg-white rounded text-gray-700 text-xs"
+                      title="Mover izquierda"
+                    >
+                      &#8592;
+                    </button>
+                  )}
+                  <button
+                    onClick={() => removeAdditionalImage(i)}
+                    className="p-1 bg-red-500 rounded text-white text-xs"
+                    title="Eliminar"
+                  >
+                    &#10005;
+                  </button>
+                  {i < product.additional_images.length - 1 && (
+                    <button
+                      onClick={() => moveImage(i, 'down')}
+                      className="p-1 bg-white rounded text-gray-700 text-xs"
+                      title="Mover derecha"
+                    >
+                      &#8594;
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {product.additional_images.length < 5 && (
+              <label className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, true)} className="hidden" disabled={uploading} />
+              </label>
+            )}
+          </div>
+        </div>
+
+        {/* Video URL */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            URL de video <span className="text-gray-400 font-normal">(YouTube o enlace directo)</span>
+          </label>
+          <input
+            type="text"
+            value={product.video_url}
+            onChange={(e) => handleChange('video_url', e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
 
         {/* Basic info */}
@@ -315,8 +471,8 @@ export default function ProductEditorPage() {
 
         {/* Pricing */}
         <div>
-          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Precios y stock</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Precios</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Precio (CLP) *</label>
               <input
@@ -344,14 +500,46 @@ export default function ProductEditorPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+          </div>
+          {margin !== null && (
+            <p className="text-sm mt-2">
+              <span className="text-gray-500">Margen: </span>
+              <span className={`font-bold ${Number(margin) < 20 ? 'text-red-600' : Number(margin) < 40 ? 'text-yellow-600' : 'text-green-600'}`}>
+                {margin}%
+              </span>
+            </p>
+          )}
+        </div>
+
+        {/* Stock by warehouse */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Stock por bodega</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stock *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Bodega Ocoa</label>
               <input
                 type="number"
-                value={product.stock}
-                onChange={(e) => handleChange('stock', e.target.value)}
+                value={product.stock_ocoa}
+                onChange={(e) => handleChange('stock_ocoa', e.target.value)}
+                min="0"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Bodega Local 21</label>
+              <input
+                type="number"
+                value={product.stock_local21}
+                onChange={(e) => handleChange('stock_local21', e.target.value)}
+                min="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Stock Total</label>
+              <div className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 font-bold text-gray-700">
+                {totalStock}
+              </div>
             </div>
           </div>
         </div>
@@ -406,6 +594,15 @@ export default function ProductEditorPage() {
         <div>
           <h3 className="text-sm font-semibold text-gray-900 mb-3 uppercase tracking-wide">Opciones</h3>
           <div className="flex flex-wrap gap-6">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={product.active}
+                onChange={(e) => handleChange('active', e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              Activo (visible en catálogo)
+            </label>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"

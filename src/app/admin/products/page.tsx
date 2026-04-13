@@ -2,16 +2,22 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
+import { getWarehouseStock } from '@/lib/product-metadata';
 
 interface Product {
   id: string;
   name: string;
   sku: string;
   price: number;
+  cost_price: number;
   stock: number;
+  stock_ocoa?: number;
+  stock_local21?: number;
   brand: string;
   image_url: string;
   category_id: string;
+  active: boolean;
+  metadata?: Record<string, unknown>;
   categories?: { name: string; slug: string };
 }
 
@@ -24,6 +30,25 @@ function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 }
 
+function getMargin(price: number, costPrice: number): number | null {
+  if (!costPrice || costPrice <= 0) return null;
+  return ((price - costPrice) / costPrice) * 100;
+}
+
+function MarginBadge({ price, costPrice }: { price: number; costPrice: number }) {
+  const margin = getMargin(price, costPrice);
+  if (margin === null) return <span className="text-gray-400 text-xs">—</span>;
+  const rounded = margin.toFixed(1);
+  let colorClass = 'text-green-700 bg-green-50';
+  if (margin < 20) colorClass = 'text-red-700 bg-red-50';
+  else if (margin < 40) colorClass = 'text-yellow-700 bg-yellow-50';
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${colorClass}`}>
+      {rounded}%
+    </span>
+  );
+}
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -33,11 +58,18 @@ export default function AdminProductsPage() {
   const [category, setCategory] = useState('');
   const [brand, setBrand] = useState('');
   const [hasImage, setHasImage] = useState('');
+  const [activeFilter, setActiveFilter] = useState('');
+  const [minCost, setMinCost] = useState('');
+  const [maxCost, setMaxCost] = useState('');
+  const [minMargin, setMinMargin] = useState('');
+  const [maxMargin, setMaxMargin] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const limit = 50;
 
   useEffect(() => {
@@ -57,13 +89,29 @@ export default function AdminProductsPage() {
     if (category) params.set('category', category);
     if (brand) params.set('brand', brand);
     if (hasImage) params.set('has_image', hasImage);
+    if (activeFilter) params.set('active', activeFilter);
+    if (minCost) params.set('min_cost', minCost);
+    if (maxCost) params.set('max_cost', maxCost);
 
     const res = await fetch(`/api/admin/products?${params}`);
     const data = await res.json();
-    setProducts(data.data || []);
-    setTotal(data.count || 0);
+    let filtered = data.data || [];
+
+    // Client-side margin filtering (margin is computed, not a DB column)
+    if (minMargin || maxMargin) {
+      const minM = minMargin ? parseFloat(minMargin) : -Infinity;
+      const maxM = maxMargin ? parseFloat(maxMargin) : Infinity;
+      filtered = filtered.filter((p: Product) => {
+        const margin = getMargin(p.price, p.cost_price);
+        if (margin === null) return false;
+        return margin >= minM && margin <= maxM;
+      });
+    }
+
+    setProducts(filtered);
+    setTotal(minMargin || maxMargin ? filtered.length : (data.count || 0));
     setLoading(false);
-  }, [page, search, category, brand, hasImage, sortBy, sortDir]);
+  }, [page, search, category, brand, hasImage, activeFilter, minCost, maxCost, minMargin, maxMargin, sortBy, sortDir]);
 
   useEffect(() => {
     fetchProducts();
@@ -85,6 +133,29 @@ export default function AdminProductsPage() {
       setDeleteId(null);
       fetchProducts();
     }
+  }
+
+  async function handleToggleActive(product: Product) {
+    setTogglingId(product.id);
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !product.active }),
+      });
+      if (res.ok) {
+        setProducts(prev => prev.map(p =>
+          p.id === product.id ? { ...p, active: !p.active } : p
+        ));
+      }
+    } catch { /* ignore */ }
+    setTogglingId(null);
+  }
+
+  function clearFilters() {
+    setSearch(''); setCategory(''); setBrand(''); setHasImage('');
+    setActiveFilter(''); setMinCost(''); setMaxCost('');
+    setMinMargin(''); setMaxMargin(''); setPage(1);
   }
 
   const totalPages = Math.ceil(total / limit);
@@ -114,7 +185,7 @@ export default function AdminProductsPage() {
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           <div>
             <input
               type="text"
@@ -160,14 +231,78 @@ export default function AdminProductsPage() {
             </select>
           </div>
           <div>
-            <button
-              onClick={() => { setSearch(''); setCategory(''); setBrand(''); setHasImage(''); setPage(1); }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            <select
+              value={activeFilter}
+              onChange={(e) => { setActiveFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
-              Limpiar filtros
+              <option value="">Todos (estado)</option>
+              <option value="true">Activos</option>
+              <option value="false">Inactivos</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              {showAdvanced ? 'Menos' : 'Más filtros'}
+            </button>
+            <button
+              onClick={clearFilters}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Limpiar filtros"
+            >
+              Limpiar
             </button>
           </div>
         </div>
+
+        {/* Advanced filters */}
+        {showAdvanced && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-gray-100">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Costo mín.</label>
+              <input
+                type="number"
+                value={minCost}
+                onChange={(e) => { setMinCost(e.target.value); setPage(1); }}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Costo máx.</label>
+              <input
+                type="number"
+                value={maxCost}
+                onChange={(e) => { setMaxCost(e.target.value); setPage(1); }}
+                placeholder="999999"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Margen mín. %</label>
+              <input
+                type="number"
+                value={minMargin}
+                onChange={(e) => { setMinMargin(e.target.value); setPage(1); }}
+                placeholder="0"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Margen máx. %</label>
+              <input
+                type="number"
+                value={maxMargin}
+                onChange={(e) => { setMaxMargin(e.target.value); setPage(1); }}
+                placeholder="999"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -184,13 +319,16 @@ export default function AdminProductsPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500 hidden lg:table-cell cursor-pointer select-none" onClick={() => handleSort('brand')}>
                   Marca <SortIcon col="brand" />
                 </th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500 hidden lg:table-cell">Categoría</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('price')}>
                   Precio <SortIcon col="price" />
                 </th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500 hidden md:table-cell">Margen</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Ocoa</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Local 21</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('stock')}>
-                  Stock <SortIcon col="stock" />
+                  Total <SortIcon col="stock" />
                 </th>
+                <th className="px-4 py-3 text-center font-medium text-gray-500 w-16">Activo</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500 w-24">Acciones</th>
               </tr>
             </thead>
@@ -202,66 +340,89 @@ export default function AdminProductsPage() {
                     <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-48" /></td>
                     <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 bg-gray-200 rounded w-24" /></td>
                     <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 bg-gray-200 rounded w-20" /></td>
-                    <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 bg-gray-200 rounded w-20" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-16 ml-auto" /></td>
+                    <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 bg-gray-200 rounded w-12 ml-auto" /></td>
+                    <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 bg-gray-200 rounded w-8 ml-auto" /></td>
+                    <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 bg-gray-200 rounded w-8 ml-auto" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-12 ml-auto" /></td>
+                    <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-8 mx-auto" /></td>
                     <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-16 ml-auto" /></td>
                   </tr>
                 ))
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
                     No se encontraron productos
                   </td>
                 </tr>
               ) : (
-                products.map((p) => (
-                  <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-2">
-                      {p.image_url ? (
-                        <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" />
-                      ) : (
-                        <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-400 text-xs">--</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 font-medium text-gray-900 max-w-xs truncate">{p.name}</td>
-                    <td className="px-4 py-2 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || '-'}</td>
-                    <td className="px-4 py-2 text-gray-500 hidden lg:table-cell">{p.brand || '-'}</td>
-                    <td className="px-4 py-2 text-gray-500 hidden lg:table-cell">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-gray-100">
-                        {p.categories?.name || '-'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right font-medium">{formatCLP(p.price)}</td>
-                    <td className="px-4 py-2 text-right">
-                      <span className={p.stock <= 0 ? 'text-red-600 font-semibold' : p.stock < 10 ? 'text-orange-600' : 'text-gray-700'}>
-                        {p.stock}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Link
-                          href={`/admin/products/${p.id}`}
-                          className="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition-colors"
-                          title="Editar"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </Link>
+                products.map((p) => {
+                  const ws = getWarehouseStock(p as unknown as Record<string, unknown>);
+                  return (
+                    <tr key={p.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${!p.active ? 'opacity-50 bg-gray-50' : ''}`}>
+                      <td className="px-4 py-2">
+                        {p.image_url ? (
+                          <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-400 text-xs">--</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 font-medium text-gray-900 max-w-xs truncate">
+                        {p.name}
+                        {!p.active && <span className="ml-2 text-xs text-gray-400">(inactivo)</span>}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || '-'}</td>
+                      <td className="px-4 py-2 text-gray-500 hidden lg:table-cell">{p.brand || '-'}</td>
+                      <td className="px-4 py-2 text-right font-medium">{formatCLP(p.price)}</td>
+                      <td className="px-4 py-2 text-right hidden md:table-cell">
+                        <MarginBadge price={p.price} costPrice={p.cost_price} />
+                      </td>
+                      <td className="px-4 py-2 text-right hidden lg:table-cell text-gray-600">{ws.ocoa}</td>
+                      <td className="px-4 py-2 text-right hidden lg:table-cell text-gray-600">{ws.local21}</td>
+                      <td className="px-4 py-2 text-right">
+                        <span className={p.stock <= 0 ? 'text-red-600 font-semibold' : p.stock < 10 ? 'text-orange-600' : 'text-gray-700'}>
+                          {p.stock}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-center">
                         <button
-                          onClick={() => setDeleteId(p.id)}
-                          className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors"
-                          title="Eliminar"
+                          onClick={() => handleToggleActive(p)}
+                          disabled={togglingId === p.id}
+                          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                            p.active ? 'bg-green-500' : 'bg-gray-300'
+                          } ${togglingId === p.id ? 'opacity-50' : ''}`}
+                          title={p.active ? 'Desactivar' : 'Activar'}
                         >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                            p.active ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                          }`} />
                         </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={`/admin/products/${p.id}`}
+                            className="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition-colors"
+                            title="Editar"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </Link>
+                          <button
+                            onClick={() => setDeleteId(p.id)}
+                            className="p-1.5 rounded hover:bg-red-50 text-red-500 transition-colors"
+                            title="Eliminar"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

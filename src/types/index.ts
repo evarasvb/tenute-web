@@ -7,6 +7,15 @@ export interface Category {
   created_at: string;
 }
 
+export interface ProductMetadata {
+  additional_images?: string[];
+  video_url?: string;
+  warehouse_stock?: {
+    ocoa: number;
+    local21: number;
+  };
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -15,15 +24,20 @@ export interface Product {
   price: number;
   compare_price?: number;
   stock: number;
+  stock_ocoa?: number;
+  stock_local21?: number;
   condition: string;
   image_url?: string;
   images?: string[];
   tags?: string[];
+  metadata?: ProductMetadata;
+  video_url?: string;
   category_id: string;
   category?: Category;
   is_featured: boolean;
   is_offer: boolean;
   is_auction: boolean;
+  active: boolean;
   sku?: string;
   brand?: string;
   unit: string;
@@ -47,7 +61,7 @@ export interface Customer {
 
 export type OrderStatus = 'pending' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled';
 export type ShippingMethod = 'pickup' | 'local_delivery' | 'starken';
-export type PaymentMethod = 'mercadopago' | 'transfer' | 'whatsapp';
+export type PaymentMethod = 'mercadopago' | 'transfer' | 'whatsapp' | 'flow';
 
 export interface Order {
   id: string;

@@ -56,7 +56,8 @@ export default function CatalogClient({
 
     let query = supabase
       .from('products')
-      .select('id, name, slug, price, compare_price, image_url, brand, stock, categories(name)', { count: 'exact' });
+      .select('id, name, slug, price, compare_price, image_url, brand, stock, categories(name)', { count: 'exact' })
+      .eq('active', true);
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,brand.ilike.%${search}%`);

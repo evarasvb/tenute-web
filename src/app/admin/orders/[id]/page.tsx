@@ -39,6 +39,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   mercadopago: 'MercadoPago',
   transfer: 'Transferencia bancaria',
   whatsapp: 'WhatsApp',
+  flow: 'Tarjeta (Flow.cl)',
 };
 
 export default function AdminOrderDetailPage({
@@ -57,6 +58,7 @@ export default function AdminOrderDetailPage({
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [labelPackages, setLabelPackages] = useState('1');
   const [labelWeight, setLabelWeight] = useState('');
+  const [labelPreparedBy, setLabelPreparedBy] = useState('Tenute');
   const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -176,19 +178,17 @@ export default function AdminOrderDetailPage({
         ? 'Despacho Local'
         : 'Retiro en Tienda';
 
-    const address = [
-      order.shipping_address,
-      order.shipping_commune,
-      order.shipping_city,
-      order.shipping_region,
-    ]
-      .filter(Boolean)
-      .join(', ');
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const orderDate = new Date(order.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    const addressParts = [order.shipping_address].filter(Boolean);
+    const locationParts = [order.shipping_commune, order.shipping_city, order.shipping_region].filter(Boolean).join(', ');
 
     const itemsHtml = (order.items || [])
       .map(
         (item) =>
-          `<div style="padding:2px 0;">- ${item.product_name} x ${item.quantity}</div>`
+          `<div style="padding:2px 0;">Cód: ${item.product_sku || '—'} - ${item.product_name} x${item.quantity} un</div>`
       )
       .join('');
 
@@ -207,20 +207,23 @@ export default function AdminOrderDetailPage({
     }
     .section { padding: 8px 12px; border-bottom: 2px solid #000; }
     .section:last-child { border-bottom: none; }
-    .header { display: flex; justify-content: space-between; align-items: center; }
-    .header .brand { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
-    .header .order-num { font-size: 16px; font-weight: bold; }
-    .sender { font-size: 11px; color: #444; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .header-left .brand { font-size: 22px; font-weight: bold; letter-spacing: 2px; }
+    .header-left .sender { font-size: 11px; color: #444; }
+    .header-right { text-align: right; font-size: 11px; }
+    .header-right .order-num { font-size: 16px; font-weight: bold; margin-bottom: 2px; }
     .dest-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; margin-bottom: 4px; }
     .dest-name { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
+    .dest-phone { font-size: 20px; font-weight: bold; margin-bottom: 4px; border: 1px solid #000; display: inline-block; padding: 2px 8px; }
     .dest-address { font-size: 13px; margin-bottom: 2px; }
-    .dest-phone { font-size: 12px; }
+    .dest-row { display: flex; justify-content: space-between; align-items: flex-start; }
     .shipping-row { display: flex; gap: 24px; font-size: 13px; font-weight: bold; }
     .items { font-size: 11px; }
-    .items-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; margin-bottom: 4px; }
+    .items-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .items-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; }
+    .bultos { font-size: 13px; font-weight: bold; }
     .notes-label { font-size: 10px; font-weight: bold; color: #666; letter-spacing: 1px; margin-bottom: 2px; }
     .notes { font-size: 11px; }
-    .tracking { font-size: 12px; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
@@ -230,40 +233,47 @@ export default function AdminOrderDetailPage({
   <div class="label">
     <div class="section">
       <div class="header">
-        <div>
+        <div class="header-left">
           <div class="brand">TENUTE</div>
           <div class="sender">Feria Agro Tahsa, Local 21</div>
-          <div class="sender">Segunda Calle, Hijuelas, V Región</div>
+          <div class="sender">Hijuelas, V Región</div>
           <div class="sender">+569 87299147</div>
         </div>
-        <div class="order-num">PEDIDO ${order.order_number}</div>
+        <div class="header-right">
+          <div class="order-num">PEDIDO ${order.order_number}</div>
+          <div>Fecha: ${orderDate}</div>
+          <div>Embalaje: ${dateStr}</div>
+          <div>Preparado por: ${labelPreparedBy || 'Tenute'}</div>
+        </div>
       </div>
     </div>
     <div class="section" style="min-height: 80px;">
       <div class="dest-label">DESTINATARIO:</div>
-      <div class="dest-name">${order.customer_name}</div>
-      <div class="dest-address">${address || 'Sin dirección'}</div>
-      <div class="dest-phone">Tel: ${order.customer_phone}</div>
+      <div class="dest-row">
+        <div style="flex:1;">
+          <div class="dest-name">${order.customer_name}</div>
+          <div class="dest-address">${addressParts.join(', ') || 'Sin dirección'}</div>
+          <div class="dest-address">${locationParts || ''}</div>
+          ${order.notes ? `<div style="font-size:11px;margin-top:4px;"><strong>Obs:</strong> ${order.notes}</div>` : ''}
+        </div>
+        <div style="text-align:right;padding-left:16px;">
+          <div class="dest-phone">Tel: ${order.customer_phone}</div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="items-header">
+        <div class="items-label">CONTENIDO:</div>
+        <div class="bultos">BULTOS: ${labelPackages || '1'}</div>
+      </div>
+      <div class="items">${itemsHtml}</div>
     </div>
     <div class="section">
       <div class="shipping-row">
         <span>ENVÍO: ${shippingMethodLabel}</span>
-        <span>BULTOS: ${labelPackages || '1'}</span>
         ${labelWeight ? `<span>PESO APROX: ${labelWeight} kg</span>` : ''}
       </div>
     </div>
-    <div class="section">
-      <div class="items-label">CONTENIDO:</div>
-      <div class="items">${itemsHtml}</div>
-    </div>
-    ${
-      order.notes || order.tracking_number
-        ? `<div class="section">
-      ${order.notes ? `<div class="notes-label">OBSERVACIONES:</div><div class="notes">${order.notes}</div>` : ''}
-      ${order.tracking_number ? `<div class="tracking" style="margin-top:4px;"><strong>N° SEGUIMIENTO:</strong> ${order.tracking_number}</div>` : ''}
-    </div>`
-        : ''
-    }
   </div>
   <script>window.onload=function(){window.print();}</script>
 </body>
@@ -684,6 +694,18 @@ export default function AdminOrderDetailPage({
                   value={labelWeight}
                   onChange={(e) => setLabelWeight(e.target.value)}
                   placeholder="Ej: 2.5"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Preparado por
+                </label>
+                <input
+                  type="text"
+                  value={labelPreparedBy}
+                  onChange={(e) => setLabelPreparedBy(e.target.value)}
+                  placeholder="Tenute"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
