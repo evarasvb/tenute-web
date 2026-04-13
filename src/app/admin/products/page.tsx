@@ -31,8 +31,8 @@ function formatCLP(n: number) {
 }
 
 function getMargin(price: number, costPrice: number): number | null {
-  if (!costPrice || costPrice <= 0) return null;
-  return ((price - costPrice) / costPrice) * 100;
+  if (!costPrice || costPrice <= 0 || !price || price <= 0) return null;
+  return ((price - costPrice) / price) * 100;
 }
 
 function MarginBadge({ price, costPrice }: { price: number; costPrice: number }) {
@@ -40,8 +40,8 @@ function MarginBadge({ price, costPrice }: { price: number; costPrice: number })
   if (margin === null) return <span className="text-gray-400 text-xs">—</span>;
   const rounded = margin.toFixed(1);
   let colorClass = 'text-green-700 bg-green-50';
-  if (margin < 20) colorClass = 'text-red-700 bg-red-50';
-  else if (margin < 40) colorClass = 'text-yellow-700 bg-yellow-50';
+  if (margin < 10) colorClass = 'text-red-700 bg-red-50';
+  else if (margin < 25) colorClass = 'text-orange-700 bg-orange-50';
   return (
     <span className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${colorClass}`}>
       {rounded}%

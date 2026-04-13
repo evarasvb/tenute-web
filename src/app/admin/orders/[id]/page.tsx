@@ -58,7 +58,7 @@ export default function AdminOrderDetailPage({
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [labelPackages, setLabelPackages] = useState('1');
   const [labelWeight, setLabelWeight] = useState('');
-  const [labelPreparedBy, setLabelPreparedBy] = useState('Tenute');
+  const [labelPreparedBy, setLabelPreparedBy] = useState('');
   const labelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -188,7 +188,7 @@ export default function AdminOrderDetailPage({
     const itemsHtml = (order.items || [])
       .map(
         (item) =>
-          `<div style="padding:2px 0;">Cód: ${item.product_sku || '—'} - ${item.product_name} x${item.quantity} un</div>`
+          `<div style="padding:3px 0;"><strong>[${item.product_sku || 'S/C'}] ${item.product_name}</strong> — Cant: ${item.quantity} un.</div>`
       )
       .join('');
 
@@ -243,7 +243,7 @@ export default function AdminOrderDetailPage({
           <div class="order-num">PEDIDO ${order.order_number}</div>
           <div>Fecha: ${orderDate}</div>
           <div>Embalaje: ${dateStr}</div>
-          <div>Preparado por: ${labelPreparedBy || 'Tenute'}</div>
+          ${labelPreparedBy ? `<div>Preparado por: ${labelPreparedBy}</div>` : ''}
         </div>
       </div>
     </div>

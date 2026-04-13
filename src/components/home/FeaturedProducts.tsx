@@ -6,6 +6,7 @@ async function getFeaturedProducts() {
     .from('products')
     .select('id, name, slug, price, compare_price, image_url, stock, categories(name)')
     .eq('is_featured', true)
+    .neq('active', false)
     .order('name')
     .limit(12);
 
@@ -16,6 +17,7 @@ async function getFeaturedProducts() {
     .select('id, name, slug, price, compare_price, image_url, stock, categories(name)')
     .not('image_url', 'is', null)
     .neq('image_url', '')
+    .neq('active', false)
     .order('created_at', { ascending: false })
     .limit(12);
 
