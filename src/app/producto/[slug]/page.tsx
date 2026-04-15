@@ -5,11 +5,12 @@ import Footer from '@/components/layout/Footer';
 import ProductDetail from '@/components/product/ProductDetail';
 
 async function getProduct(slug: string) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('products')
-    .select('id, name, slug, description, price, compare_price, stock, image_url, categories(name), sku, unit, format, content_info, metadata, video_url, active')
+    .select('*, categories(name)')
     .eq('slug', slug)
     .single();
+  if (error) console.error('[ProductPage] Supabase error:', error.message);
   return data;
 }
 
