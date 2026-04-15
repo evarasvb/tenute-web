@@ -234,7 +234,7 @@ export default function StockPage() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex gap-1 justify-end">
                           <button
-                            onClick={() => saveStoch(p.id)}
+                            onClick={() => saveStock(p.id)}
                             disabled={saving}
                             className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50"
                           >
