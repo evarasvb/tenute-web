@@ -12,7 +12,6 @@ async function getProduct(slug: string) {
     .select('id, name, slug, description, price, compare_price, stock, image_url, categories(name), sku, unit, format, content_info, metadata, video_url, active')
     .eq('slug', normalizedSlug)
     .eq('active', true)
-    .order('updated_at', { ascending: false })
     .limit(1);
 
   // Avoid 404s when there are duplicate slugs in the database.
@@ -23,7 +22,6 @@ async function getProduct(slug: string) {
     .from('products')
     .select('id, name, slug, description, price, compare_price, stock, image_url, categories(name), sku, unit, format, content_info, metadata, video_url, active')
     .eq('slug', normalizedSlug)
-    .order('updated_at', { ascending: false })
     .limit(1);
 
   return fallback?.[0] || null;
