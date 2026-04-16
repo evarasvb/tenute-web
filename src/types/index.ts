@@ -39,6 +39,7 @@ export interface Product {
   is_auction: boolean;
   active: boolean;
   sku?: string;
+  barcode?: string;
   brand?: string;
   unit: string;
   format?: string;

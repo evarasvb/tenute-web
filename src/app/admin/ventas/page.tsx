@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 interface Product {
   id: string;
@@ -8,9 +8,10 @@ interface Product {
   price: number;
   cost_price: number | null;
   stock: number;
-  stock_local: number;
+  stock_local21: number;
   stock_ocoa: number;
   sku: string | null;
+  barcode?: string | null;
 }
 
 interface SaleItem {
@@ -43,6 +44,12 @@ interface Sale {
   }>;
 }
 
+type BarcodeDetectorLike = {
+  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
+};
+
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
+
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 }
@@ -66,6 +73,14 @@ export default function VentasPage() {
 
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<Product[]>([]);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState('');
+  const [scannerError, setScannerError] = useState('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanLoopRef = useRef<number | null>(null);
+  const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/admin/products?limit=500');
@@ -91,7 +106,9 @@ export default function VentasPage() {
     const q = productSearch.toLowerCase();
     setProductResults(
       products.filter(p =>
-        p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q))
+        p.name.toLowerCase().includes(q) ||
+        (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q))
       ).slice(0, 8)
     );
   }, [productSearch, products]);
@@ -118,6 +135,113 @@ export default function VentasPage() {
     setProductSearch('');
     setProductResults([]);
   }
+
+  const findProductByBarcode = useCallback((code: string) => {
+    const normalized = code.trim().toLowerCase();
+    if (!normalized) return null;
+    return products.find((p) => (p.barcode || '').trim().toLowerCase() === normalized)
+      || products.find((p) => (p.sku || '').trim().toLowerCase() === normalized)
+      || null;
+  }, [products]);
+
+  const handleBarcodeLookup = useCallback((code: string, opts?: { silentNotFound?: boolean }) => {
+    const normalized = code.trim();
+    if (!normalized) return;
+    const product = findProductByBarcode(normalized);
+    if (product) {
+      addProduct(product);
+      setBarcodeInput('');
+      setError('');
+      setSuccess(`Producto "${product.name}" agregado por código`);
+      return;
+    }
+    if (!opts?.silentNotFound) {
+      setError(`No se encontró producto para el código "${normalized}"`);
+    }
+  }, [addProduct, findProductByBarcode]);
+
+  const stopScanner = useCallback(() => {
+    if (scanLoopRef.current) {
+      cancelAnimationFrame(scanLoopRef.current);
+      scanLoopRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setScannerOpen(false);
+    setScannerStatus('');
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    setScannerError('');
+    setError('');
+    const media = navigator.mediaDevices;
+    if (!media?.getUserMedia) {
+      setScannerError('Tu navegador no soporta acceso a cámara');
+      return;
+    }
+
+    const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      setScannerError('BarcodeDetector no está disponible en este navegador');
+      return;
+    }
+
+    let detector: BarcodeDetectorLike;
+    try {
+      detector = new BarcodeDetectorCtor({
+        formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'codabar'],
+      });
+    } catch {
+      detector = new BarcodeDetectorCtor();
+    }
+
+    try {
+      const stream = await media.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setScannerOpen(true);
+      setScannerStatus('Apunta la cámara al código de barras');
+
+      const scan = async () => {
+        if (!videoRef.current) return;
+        try {
+          const detections = await detector.detect(videoRef.current);
+          const rawValue = detections?.[0]?.rawValue?.trim();
+          if (rawValue) {
+            const now = Date.now();
+            if (lastScanRef.current.code !== rawValue || now - lastScanRef.current.at > 1500) {
+              lastScanRef.current = { code: rawValue, at: now };
+              setBarcodeInput(rawValue);
+              handleBarcodeLookup(rawValue, { silentNotFound: true });
+              setScannerStatus(`Detectado: ${rawValue}`);
+            }
+          }
+        } catch {
+          // Evitar romper loop por fallos intermitentes del detector.
+        }
+        scanLoopRef.current = requestAnimationFrame(scan);
+      };
+
+      scanLoopRef.current = requestAnimationFrame(scan);
+    } catch {
+      setScannerError('No se pudo iniciar la cámara');
+      stopScanner();
+    }
+  }, [handleBarcodeLookup, stopScanner]);
+
+  useEffect(() => () => stopScanner(), [stopScanner]);
 
   function updateItem(index: number, field: keyof SaleItem, value: string | number) {
     setItems(prev => prev.map((item, i) => {
@@ -252,12 +376,53 @@ export default function VentasPage() {
 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Productos</h3>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 mb-4">
+            <input
+              type="text"
+              value={barcodeInput}
+              onChange={(e) => setBarcodeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleBarcodeLookup(barcodeInput);
+                }
+              }}
+              placeholder="Escanea o escribe barcode/SKU y presiona Enter"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => handleBarcodeLookup(barcodeInput)}
+              className="px-3 py-2 border border-blue-300 text-blue-700 rounded-lg text-sm hover:bg-blue-50"
+            >
+              Agregar código
+            </button>
+            <button
+              type="button"
+              onClick={() => (scannerOpen ? stopScanner() : startScanner())}
+              className={`px-3 py-2 rounded-lg text-sm text-white ${scannerOpen ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-800 hover:bg-gray-900'}`}
+            >
+              {scannerOpen ? 'Detener cámara' : 'Escanear cámara'}
+            </button>
+          </div>
+
+          {scannerError && (
+            <p className="text-xs text-red-600 mb-3">{scannerError}</p>
+          )}
+
+          {scannerOpen && (
+            <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+              <video ref={videoRef} className="w-full max-h-72 bg-black" playsInline muted />
+              <p className="px-3 py-2 text-xs text-gray-600">{scannerStatus || 'Iniciando cámara...'}</p>
+            </div>
+          )}
+
           <div className="relative mb-4">
             <input
               type="text"
               value={productSearch}
               onChange={e => setProductSearch(e.target.value)}
-              placeholder="Buscar producto por nombre o SKU..."
+              placeholder="Buscar producto por nombre, SKU o barcode..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {productResults.length > 0 && (
@@ -267,7 +432,7 @@ export default function VentasPage() {
                     className="w-full text-left px-4 py-2.5 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-0">
                     <div className="font-medium text-gray-900">{p.name}</div>
                     <div className="text-xs text-gray-500">
-                      {formatCLP(p.price)} · Stock local: {p.stock_local} · Ocoa: {p.stock_ocoa}
+                      {formatCLP(p.price)} · SKU: {p.sku || '-'} · Local 21: {p.stock_local21 || 0} · Ocoa: {p.stock_ocoa}
                     </div>
                   </button>
                 ))}
@@ -417,4 +582,4 @@ export default function VentasPage() {
       </div>
     </div>
   );
-    }
+}

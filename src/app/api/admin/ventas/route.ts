@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
   const total = subtotal - discountAmount;
   for (const item of items) {
     if (!item.product_id) continue;
-    const { data: product } = await supabase.from('products').select('stock, stock_ocoa, stock_local, name').eq('id', item.product_id).single();
+    const { data: product } = await supabase.from('products').select('stock, stock_ocoa, stock_local21, name').eq('id', item.product_id).single();
     if (!product) continue;
-    const stockField = item.warehouse === 'local' ? 'stock_local' : 'stock_ocoa';
+    const stockField = item.warehouse === 'local' ? 'stock_local21' : 'stock_ocoa';
     const available = (product[stockField as keyof typeof product] as number) || 0;
     if (available < item.quantity) {
       return NextResponse.json({ error: `Stock insuficiente para "${product.name}". Disponible: ${available}` }, { status: 400 });
@@ -71,9 +71,9 @@ export async function POST(request: NextRequest) {
   if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 });
   for (const item of items) {
     if (!item.product_id) continue;
-    const { data: product } = await supabase.from('products').select('stock, stock_ocoa, stock_local').eq('id', item.product_id).single();
+    const { data: product } = await supabase.from('products').select('stock, stock_ocoa, stock_local21').eq('id', item.product_id).single();
     if (!product) continue;
-    const stockField = item.warehouse === 'local' ? 'stock_local' : 'stock_ocoa';
+    const stockField = item.warehouse === 'local' ? 'stock_local21' : 'stock_ocoa';
     const current = (product[stockField as keyof typeof product] as number) || 0;
     await supabase.from('products').update({
       [stockField]: Math.max(0, current - item.quantity),
