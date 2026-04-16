@@ -20,6 +20,8 @@ export default function ComprasPage() {
   const [productSearch, setProductSearch] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [supplierRut, setSupplierRut] = useState('');
+      const [proveedorResults, setProveedorResults] = useState<{id:string;nombre:string;rut:string}[]>([]);
+      const [showProveedorDropdown, setShowProveedorDropdown] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -37,11 +39,24 @@ export default function ComprasPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+    // Buscar proveedores cuando se escribe el nombre del proveedor
+    useEffect(() => {
+          if (supplierName.length < 2) { setProveedorResults([]); setShowProveedorDropdown(false); return; }
+          const timer = setTimeout(async () => {
+                  try {
+                            const res = await fetch(`/api/admin/proveedores?search=${supplierName}`);
+                            const data = await res.json();
+                            setProveedorResults((data.proveedores || []).map((p: {id:string;nombre:string;rut:string|null}) => ({ id: p.id, nombre: p.nombre, rut: p.rut || '' })));
+                            setShowProveedorDropdown(true);
+                          } catch {} }, 300);
+          return () => clearTimeout(timer);
+        }, [supplierName]);
+
   const filteredProducts = products.filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku||'').toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8);
   const totalAmount = items.reduce((s, i) => s + i.quantity * i.unit_cost, 0);
 
   const resetForm = () => {
-    setSupplierName(''); setSupplierRut(''); setInvoiceNumber('');
+    setSupplierName(''); setSupplierRut(''); setInvoiceNumber(''); setProveedorResults([]); setShowProveedorDropdown(false);
     setPurchaseDate(new Date().toISOString().split('T')[0]);
     setNotes(''); setItems([{ ...EMPTY }]); setShowForm(false);
   };
@@ -84,7 +99,10 @@ export default function ComprasPage() {
           <h3 className="font-semibold text-gray-900 text-lg">Registrar Nueva Compra</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div><label className="block text-xs font-medium text-gray-600 mb-1">Proveedor *</label>
-              <input value={supplierName} onChange={e => setSupplierName(e.target.value)} placeholder="Nombre del proveedor" required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
+                            <div className="relative">
+              <input value={supplierName} onChange={e => setSupplierName(e.target.value)} onFocus={() => supplierName.length >= 2 && setShowProveedorDropdown(true)} onBlur={() => setTimeout(() => setShowProveedorDropdown(false), 200)} autoComplete="off" placeholder="Nombre del proveedor" required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                                            {showProveedorDropdown && proveedorResults.length > 0 && (<div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">{proveedorResults.map(p => (<button key={p.id} type="button" onMouseDown={(e) => { e.preventDefault(); setSupplierName(p.nombre); setSupplierRut(p.rut); setShowProveedorDropdown(false); setProveedorResults([]); }} className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-0"><span className="font-medium">{p.nombre}</span>{p.rut && <span className="ml-2 text-gray-400 text-xs">{p.rut}</span>}</button>))}</div>)}
+                                            </div></div>
             <div><label className="block text-xs font-medium text-gray-600 mb-1">RUT</label>
               <input value={supplierRut} onChange={e => setSupplierRut(e.target.value)} placeholder="12.345.678-9" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
             <div><label className="block text-xs font-medium text-gray-600 mb-1">N Factura</label>
