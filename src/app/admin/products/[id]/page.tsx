@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getWarehouseStock, getAdditionalImages, getVideoUrl } from '@/lib/product-metadata';
+import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 interface Category {
   id: string;
@@ -127,6 +128,14 @@ export default function ProductEditorPage() {
     setError('');
     setSuccess('');
 
+    const normalizedBarcode = normalizeBarcode(product.barcode || '');
+    const barcodeValidation = validateBarcode(normalizedBarcode, { allowCode128Like: true });
+    if (!barcodeValidation.valid) {
+      setError('Barcode inválido. Usa EAN-8, EAN-13, UPC o CODE128.');
+      setSaving(false);
+      return;
+    }
+
     const metadata = {
       additional_images: product.additional_images.filter(Boolean),
       video_url: product.video_url || undefined,
@@ -147,7 +156,7 @@ export default function ProductEditorPage() {
       category_id: product.category_id || null,
       condition: product.condition,
       sku: product.sku || null,
-      barcode: product.barcode || null,
+      barcode: normalizedBarcode || null,
       unit: product.unit || 'UN',
       format: product.format || null,
       content_info: product.content_info || null,
@@ -182,6 +191,10 @@ export default function ProductEditorPage() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (isUniqueConstraintError(data.error) && String(data.error).toLowerCase().includes('barcode')) {
+          setError('Ese barcode ya está asignado a otro producto.');
+          return;
+        }
         if (data.error && (data.error.includes('stock_ocoa') || data.error.includes('stock_local21') || data.error.includes('video_url') || data.error.includes('metadata'))) {
           delete payload.stock_ocoa;
           delete payload.stock_local21;
@@ -195,6 +208,10 @@ export default function ProductEditorPage() {
           });
           const retryData = await retryRes.json();
           if (!retryRes.ok) {
+            if (isUniqueConstraintError(retryData.error) && String(retryData.error).toLowerCase().includes('barcode')) {
+              setError('Ese barcode ya está asignado a otro producto.');
+              return;
+            }
             setError(retryData.error || 'Error guardando');
           } else {
             setSuccess('Producto guardado (sin columnas extendidas)');

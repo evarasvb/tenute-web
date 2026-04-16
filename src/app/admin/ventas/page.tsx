@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { createBarcodeDetector } from '@/lib/barcode-detector';
+import { normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 interface Product {
   id: string;
@@ -44,12 +46,6 @@ interface Sale {
   }>;
 }
 
-type BarcodeDetectorLike = {
-  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
-};
-
-type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
-
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 }
@@ -77,6 +73,7 @@ export default function VentasPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
+  const [scanCount, setScanCount] = useState(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanLoopRef = useRef<number | null>(null);
@@ -137,22 +134,30 @@ export default function VentasPage() {
   }
 
   const findProductByBarcode = useCallback((code: string) => {
-    const normalized = code.trim().toLowerCase();
+    const normalized = normalizeBarcode(code).toLowerCase();
     if (!normalized) return null;
     return products.find((p) => (p.barcode || '').trim().toLowerCase() === normalized)
       || products.find((p) => (p.sku || '').trim().toLowerCase() === normalized)
       || null;
   }, [products]);
 
-  const handleBarcodeLookup = useCallback((code: string, opts?: { silentNotFound?: boolean }) => {
-    const normalized = code.trim();
+  const handleBarcodeLookup = useCallback((code: string, opts?: { silentNotFound?: boolean; skipValidation?: boolean }) => {
+    const normalized = normalizeBarcode(code);
     if (!normalized) return;
+    const validation = opts?.skipValidation
+      ? { valid: true, normalized }
+      : validateBarcode(normalized, { allowCode128Like: true });
+    if (!validation.valid && !opts?.silentNotFound) {
+      setError('Formato de código inválido. Usa EAN-8, EAN-13, UPC o CODE128.');
+      return;
+    }
     const product = findProductByBarcode(normalized);
     if (product) {
       addProduct(product);
       setBarcodeInput('');
       setError('');
       setSuccess(`Producto "${product.name}" agregado por código`);
+      setScanCount((prev) => prev + 1);
       return;
     }
     if (!opts?.silentNotFound) {
@@ -185,19 +190,12 @@ export default function VentasPage() {
       return;
     }
 
-    const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-    if (!BarcodeDetectorCtor) {
-      setScannerError('BarcodeDetector no está disponible en este navegador');
-      return;
-    }
-
-    let detector: BarcodeDetectorLike;
+    let detector;
     try {
-      detector = new BarcodeDetectorCtor({
-        formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'codabar'],
-      });
+      detector = await createBarcodeDetector();
     } catch {
-      detector = new BarcodeDetectorCtor();
+      setScannerError('No se pudo inicializar el lector de códigos en este navegador');
+      return;
     }
 
     try {
@@ -220,12 +218,13 @@ export default function VentasPage() {
           const detections = await detector.detect(videoRef.current);
           const rawValue = detections?.[0]?.rawValue?.trim();
           if (rawValue) {
+            const normalized = normalizeBarcode(rawValue);
             const now = Date.now();
-            if (lastScanRef.current.code !== rawValue || now - lastScanRef.current.at > 1500) {
-              lastScanRef.current = { code: rawValue, at: now };
-              setBarcodeInput(rawValue);
-              handleBarcodeLookup(rawValue, { silentNotFound: true });
-              setScannerStatus(`Detectado: ${rawValue}`);
+            if (lastScanRef.current.code !== normalized || now - lastScanRef.current.at > 1500) {
+              lastScanRef.current = { code: normalized, at: now };
+              setBarcodeInput(normalized);
+              handleBarcodeLookup(normalized, { silentNotFound: true, skipValidation: true });
+              setScannerStatus(`Detectado: ${normalized}`);
             }
           }
         } catch {
@@ -404,6 +403,10 @@ export default function VentasPage() {
             >
               {scannerOpen ? 'Detener cámara' : 'Escanear cámara'}
             </button>
+          </div>
+          <div className="mb-3 flex items-center justify-between text-xs text-gray-500">
+            <span>Escaneados en esta sesión: {scanCount}</span>
+            <span>Formatos sugeridos: EAN-8 / EAN-13 / UPC / CODE128</span>
           </div>
 
           {scannerError && (

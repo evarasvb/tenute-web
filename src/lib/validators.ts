@@ -109,3 +109,66 @@ export function validateEmail(email: string): boolean {
   if (!email) return true; // optional field
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
+
+export function normalizeBarcode(value: string): string {
+  return value.replace(/\s+/g, '').trim();
+}
+
+function isValidEan8(value: string): boolean {
+  if (!/^\d{8}$/.test(value)) return false;
+  const base = value.slice(0, 7);
+  const check = Number(value[7]);
+  let sum = 0;
+  for (let i = 0; i < base.length; i++) {
+    const digit = Number(base[i]);
+    const positionFromLeft = i + 1;
+    const weight = positionFromLeft % 2 === 1 ? 3 : 1;
+    sum += digit * weight;
+  }
+  return ((10 - (sum % 10)) % 10) === check;
+}
+
+function isValidEan13(value: string): boolean {
+  if (!/^\d{13}$/.test(value)) return false;
+  const base = value.slice(0, 12);
+  const check = Number(value[12]);
+  let sum = 0;
+  for (let i = 0; i < base.length; i++) {
+    const digit = Number(base[i]);
+    const positionFromLeft = i + 1;
+    const weight = positionFromLeft % 2 === 1 ? 1 : 3;
+    sum += digit * weight;
+  }
+  return ((10 - (sum % 10)) % 10) === check;
+}
+
+export function validateBarcode(
+  raw: string,
+  opts?: { allowCode128Like?: boolean }
+): { valid: boolean; normalized: string; format?: 'EAN8' | 'EAN13' | 'OTHER' } {
+  const normalized = normalizeBarcode(raw);
+  if (!normalized) return { valid: true, normalized: '' };
+
+  if (/^\d+$/.test(normalized)) {
+    if (normalized.length === 8) {
+      return { valid: isValidEan8(normalized), normalized, format: 'EAN8' };
+    }
+    if (normalized.length === 13) {
+      return { valid: isValidEan13(normalized), normalized, format: 'EAN13' };
+    }
+    return { valid: false, normalized };
+  }
+
+  if (opts?.allowCode128Like) {
+    const looksLikeCode128 = /^[\x20-\x7E]{6,32}$/.test(normalized);
+    return { valid: looksLikeCode128, normalized, format: 'OTHER' };
+  }
+
+  return { valid: false, normalized };
+}
+
+export function isUniqueConstraintError(message?: string): boolean {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('duplicate key value') || normalized.includes('unique constraint');
+}

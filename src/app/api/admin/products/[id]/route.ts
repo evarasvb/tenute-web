@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 function checkAuth(request: NextRequest) {
   const session = request.cookies.get('admin_session');
   if (session?.value !== 'authenticated') return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   return null;
+}
+
+function isMissingBarcodeColumnError(message?: string) {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    (normalized.includes('barcode') && normalized.includes('does not exist')) ||
+    (normalized.includes('barcode') && normalized.includes('schema cache')) ||
+    (normalized.includes('barcode') && normalized.includes('could not find'))
+  );
+}
+
+function isBarcodeConstraintError(message?: string) {
+  return isUniqueConstraintError(message) && (message || '').toLowerCase().includes('barcode');
 }
 
 function normalizeProductPayload(input: Record<string, unknown>) {
@@ -16,7 +31,7 @@ function normalizeProductPayload(input: Record<string, unknown>) {
   delete payload.stock_local;
 
   if (typeof payload.barcode === 'string') {
-    const barcode = payload.barcode.trim();
+    const barcode = normalizeBarcode(payload.barcode);
     payload.barcode = barcode.length > 0 ? barcode : null;
   }
 
@@ -53,6 +68,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const supabase = createAdminClient();
   const body = normalizeProductPayload(await request.json());
 
+  if (typeof body.barcode === 'string' && body.barcode) {
+    const validation = validateBarcode(body.barcode, { allowCode128Like: true });
+    if (!validation.valid) {
+      return NextResponse.json(
+        { error: 'Barcode inválido. Usa EAN-8, EAN-13, UPC o CODE128.' },
+        { status: 400 }
+      );
+    }
+    body.barcode = validation.normalized;
+  }
+
   const updateData: Record<string, unknown> = { ...body };
 
   let { data, error } = await supabase
@@ -63,7 +89,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .single();
 
   if (error) {
-    if (error?.message?.includes('barcode')) {
+    if (isMissingBarcodeColumnError(error?.message)) {
       delete updateData.barcode;
       const retry = await supabase
         .from('products')
@@ -74,6 +100,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       data = retry.data;
       error = retry.error;
       if (!error && data) return NextResponse.json(normalizeProductRow(data as Record<string, unknown>));
+    }
+    if (isBarcodeConstraintError(error?.message)) {
+      return NextResponse.json({ error: 'Ese barcode ya está asignado a otro producto.' }, { status: 409 });
     }
     if (error?.message?.includes('updated_at') || error?.message?.includes('column')) {
       delete updateData.updated_at;

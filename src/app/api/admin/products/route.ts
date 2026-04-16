@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 function checkAuth(request: NextRequest) {
   const session = request.cookies.get('admin_session');
@@ -19,6 +20,10 @@ function isMissingBarcodeColumnError(message?: string) {
   );
 }
 
+function isBarcodeConstraintError(message?: string) {
+  return isUniqueConstraintError(message) && (message || '').toLowerCase().includes('barcode');
+}
+
 function normalizeProductPayload(input: Record<string, unknown>) {
   const payload: Record<string, unknown> = { ...input };
 
@@ -28,7 +33,7 @@ function normalizeProductPayload(input: Record<string, unknown>) {
   delete payload.stock_local;
 
   if (typeof payload.barcode === 'string') {
-    const barcode = payload.barcode.trim();
+    const barcode = normalizeBarcode(payload.barcode);
     payload.barcode = barcode.length > 0 ? barcode : null;
   }
 
@@ -148,6 +153,17 @@ export async function POST(request: NextRequest) {
   const supabase = createAdminClient();
   const body = normalizeProductPayload(await request.json());
 
+  if (typeof body.barcode === 'string' && body.barcode) {
+    const validation = validateBarcode(body.barcode, { allowCode128Like: true });
+    if (!validation.valid) {
+      return NextResponse.json(
+        { error: 'Barcode inválido. Usa EAN-8, EAN-13, UPC o CODE128.' },
+        { status: 400 }
+      );
+    }
+    body.barcode = validation.normalized;
+  }
+
   let { data, error } = await supabase
     .from('products')
     .insert(body)
@@ -166,6 +182,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (error) {
+    if (isBarcodeConstraintError(error.message)) {
+      return NextResponse.json({ error: 'Ese barcode ya está asignado a otro producto.' }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
