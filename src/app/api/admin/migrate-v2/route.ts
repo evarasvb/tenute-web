@@ -5,9 +5,13 @@ function checkAuth(req: NextRequest) {
   return cookie?.value === 'authenticated';
 }
 
-export const MIGRATION_V2_SQL = `
--- MIGRACION V2: Compras y Ventas Manuales - Ejecutar en Supabase SQL Editor
+const MIGRATION_V2_SQL = `
+-- ==============================================================
+-- MIGRACIÓN V2: Compras y Ventas Manuales
+-- Ejecutar en Supabase SQL Editor
+-- ==============================================================
 
+-- Tabla de Compras a proveedores
 CREATE TABLE IF NOT EXISTS public.purchases (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   purchase_number text UNIQUE NOT NULL,
@@ -22,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.purchases (
   updated_at timestamptz DEFAULT now()
 );
 
+-- Items de cada compra
 CREATE TABLE IF NOT EXISTS public.purchase_items (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   purchase_id uuid NOT NULL REFERENCES public.purchases(id) ON DELETE CASCADE,
@@ -34,6 +39,7 @@ CREATE TABLE IF NOT EXISTS public.purchase_items (
   created_at timestamptz DEFAULT now()
 );
 
+-- Tabla de Ventas Manuales (WhatsApp, teléfono, caja)
 CREATE TABLE IF NOT EXISTS public.manual_sales (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   sale_number text UNIQUE NOT NULL,
@@ -52,6 +58,7 @@ CREATE TABLE IF NOT EXISTS public.manual_sales (
   updated_at timestamptz DEFAULT now()
 );
 
+-- Items de cada venta manual
 CREATE TABLE IF NOT EXISTS public.manual_sale_items (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   sale_id uuid NOT NULL REFERENCES public.manual_sales(id) ON DELETE CASCADE,
@@ -66,6 +73,7 @@ CREATE TABLE IF NOT EXISTS public.manual_sale_items (
   created_at timestamptz DEFAULT now()
 );
 
+-- Habilitar RLS (service_role lo bypasea automáticamente)
 ALTER TABLE public.purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.purchase_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.manual_sales ENABLE ROW LEVEL SECURITY;
@@ -76,9 +84,10 @@ export async function GET(request: NextRequest) {
   if (!checkAuth(request)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
+
   return NextResponse.json({
     sql: MIGRATION_V2_SQL,
     supabaseUrl: `https://supabase.com/dashboard/project/jynljiruhljfejnpjybbx/sql/new`,
-    instructions: 'Copia el SQL y ejecutalo en el editor de Supabase',
+    instructions: 'Copia el SQL y ejecútalo en el editor de Supabase para habilitar las tablas de Compras y Ventas',
   });
 }
