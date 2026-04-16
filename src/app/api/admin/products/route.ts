@@ -9,6 +9,16 @@ function checkAuth(request: NextRequest) {
   return null;
 }
 
+function isMissingBarcodeColumnError(message?: string) {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    (normalized.includes('barcode') && normalized.includes('does not exist')) ||
+    (normalized.includes('barcode') && normalized.includes('schema cache')) ||
+    (normalized.includes('barcode') && normalized.includes('could not find'))
+  );
+}
+
 function normalizeProductPayload(input: Record<string, unknown>) {
   const payload: Record<string, unknown> = { ...input };
 
@@ -106,7 +116,7 @@ export async function GET(request: NextRequest) {
     barcodeAsSkuFallback: false,
   });
 
-  if (error?.message?.toLowerCase().includes('barcode')) {
+  if (isMissingBarcodeColumnError(error?.message)) {
     const retry = await executeQuery({
       includeBarcodeColumn: false,
       barcodeAsSkuFallback: true,
@@ -144,7 +154,7 @@ export async function POST(request: NextRequest) {
     .select()
     .single();
 
-  if (error?.message?.includes('barcode')) {
+  if (isMissingBarcodeColumnError(error?.message)) {
     delete body.barcode;
     const retry = await supabase
       .from('products')
