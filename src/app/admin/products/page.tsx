@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
 
 interface Product {
   id: string;
@@ -335,7 +336,16 @@ export default function AdminProductsPage() {
                   return (
                     <tr key={p.id} className={'border-b border-gray-100 hover:bg-gray-50 transition-colors' + (!p.active ? ' opacity-50' : '')}>
                       <td className="px-3 py-2">
-                        {p.image_url ? <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" /> : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
+                        {p.image_url ? (
+                          <Image
+                            src={p.image_url}
+                            alt=""
+                            width={32}
+                            height={32}
+                            unoptimized
+                            className="w-8 h-8 rounded object-cover"
+                          />
+                        ) : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-900 max-w-[180px] truncate">{p.name}</td>
                       <td className="px-3 py-2 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || '-'}</td>

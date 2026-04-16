@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import Image from 'next/image';
 
 interface Product {
   id: string;
@@ -120,7 +121,16 @@ export default function ComprasPage() {
                         else { setItems(prev => [...prev, newItem]); }
                         setProductSearch('');
                       }} className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-sm">
-                        {p.image_url && <img src={p.image_url} alt="" className="w-7 h-7 object-cover rounded"/>}
+                        {p.image_url && (
+                          <Image
+                            src={p.image_url}
+                            alt=""
+                            width={28}
+                            height={28}
+                            unoptimized
+                            className="w-7 h-7 object-cover rounded"
+                          />
+                        )}
                         <div><p className="font-medium text-gray-800 truncate max-w-[180px]">{p.name}</p>
                           <p className="text-xs text-gray-400">{p.sku}{p.cost_price ? ` · ${formatCLP(p.cost_price)}`:''}</p></div>
                       </button>

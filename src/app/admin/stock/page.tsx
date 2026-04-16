@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface Product {
   id: string;
@@ -193,7 +194,14 @@ export default function StockPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {p.image_url && (
-                        <img src={p.image_url} alt="" className="w-8 h-8 object-cover rounded" />
+                        <Image
+                          src={p.image_url}
+                          alt=""
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="w-8 h-8 object-cover rounded"
+                        />
                       )}
                       <div>
                         <p className="font-medium text-gray-800 truncate max-w-[200px]">{p.name}</p>

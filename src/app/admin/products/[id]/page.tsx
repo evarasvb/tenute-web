@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { getWarehouseStock, getAdditionalImages, getVideoUrl } from '@/lib/product-metadata';
 import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
 
@@ -380,7 +381,14 @@ export default function ProductEditorPage() {
           <label className="block text-sm font-medium text-gray-700 mb-2">Imagen principal</label>
           <div className="flex items-start gap-4">
             {product.image_url ? (
-              <img src={product.image_url} alt="" className="w-32 h-32 rounded-lg object-cover border border-gray-200" />
+              <Image
+                src={product.image_url}
+                alt=""
+                width={128}
+                height={128}
+                unoptimized
+                className="w-32 h-32 rounded-lg object-cover border border-gray-200"
+              />
             ) : (
               <div className="w-32 h-32 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 text-sm">
                 Sin imagen
@@ -412,7 +420,14 @@ export default function ProductEditorPage() {
           <div className="flex flex-wrap gap-3 mb-3">
             {product.additional_images.map((url, i) => (
               <div key={i} className="relative group">
-                <img src={url} alt="" className="w-24 h-24 rounded-lg object-cover border border-gray-200" />
+                <Image
+                  src={url}
+                  alt=""
+                  width={96}
+                  height={96}
+                  unoptimized
+                  className="w-24 h-24 rounded-lg object-cover border border-gray-200"
+                />
                 <div className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                   {i > 0 && (
                     <button onClick={() => moveImage(i, 'up')} className="p-1 bg-white rounded text-gray-700 text-xs" title="Mover izquierda">&#8592;</button>
