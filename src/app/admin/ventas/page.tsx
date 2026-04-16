@@ -110,7 +110,7 @@ export default function VentasPage() {
     );
   }, [productSearch, products]);
 
-  function addProduct(p: Product) {
+  const addProduct = useCallback((p: Product) => {
     setItems(prev => {
       const existing = prev.find(i => i.product_id === p.id);
       if (existing) {
@@ -131,7 +131,7 @@ export default function VentasPage() {
     });
     setProductSearch('');
     setProductResults([]);
-  }
+  }, []);
 
   const findProductByBarcode = useCallback((code: string) => {
     const normalized = normalizeBarcode(code).toLowerCase();
