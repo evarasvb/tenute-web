@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     .select('*, categories(name, slug)', { count: 'exact' });
 
   if (search) {
-    query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%`);
+    query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`);
   }
   if (category) {
     query = query.eq('category_id', category);
