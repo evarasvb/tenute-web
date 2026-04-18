@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
-interface Product { id: string; name: string; sku: string|null; cost_price: number|null; image_url: string|null; stock_ocoa: number; stock_local: number; }
+interface Product { id: string; name: string; sku: string|null; barcode: string|null; cost_price: number|null; image_url: string|null; stock_ocoa: number; stock_local: number; }
 interface PurchaseItem { product_id: string; product_name: string; product_sku: string; quantity: number; unit_cost: number; warehouse: 'ocoa'|'local'; }
 interface Purchase { id: string; purchase_number: string; supplier_name: string; supplier_rut: string|null; invoice_number: string|null; purchase_date: string; total_amount: number; notes: string|null; status: string; created_at: string; items: Array<{ id: string; product_name: string; product_sku: string|null; quantity: number; unit_cost: number; warehouse: string; }>; }
 
@@ -22,6 +22,9 @@ export default function ComprasPage() {
   const [supplierRut, setSupplierRut] = useState('');
       const [proveedorResults, setProveedorResults] = useState<{id:string;nombre:string;rut:string}[]>([]);
       const [showProveedorDropdown, setShowProveedorDropdown] = useState(false);
+    const [scannerActive, setScannerActive] = useState(false);
+    const [barcodeInput, setBarcodeInput] = useState('');
+    const barcodeInputRef = useRef<HTMLInputElement>(null);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -52,14 +55,18 @@ export default function ComprasPage() {
           return () => clearTimeout(timer);
         }, [supplierName]);
 
-  const filteredProducts = products.filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku||'').toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8);
+  const filteredProducts = products.filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku||'').toLowerCase().includes(productSearch.toLowerCase() || (p.barcode||'').toLowerCase().includes(productSearch.toLowerCase()))).slice(0, 8);
   const totalAmount = items.reduce((s, i) => s + i.quantity * i.unit_cost, 0);
 
   const resetForm = () => {
-    setSupplierName(''); setSupplierRut(''); setInvoiceNumber(''); setProveedorResults([]); setShowProveedorDropdown(false);
+    setSupplierName(''); setSupplierRut(''); setInvoiceNumber(''); setProveedorResults([]); setShowProveedorDropdown(false); setScannerActive(false); setBarcodeInput('');
     setPurchaseDate(new Date().toISOString().split('T')[0]);
     setNotes(''); setItems([{ ...EMPTY }]); setShowForm(false);
   };
+
+    function handleBarcodeScan(code: string) { if (!code.trim()) return; const found = products.find((p: Product) => p.barcode === code || p.sku === code); if (found) { const ei = items.findIndex(i => !i.product_id); const newItem = { product_id: found.id, product_name: found.name, product_sku: found.sku||'', quantity: 1, unit_cost: found.cost_price||0, warehouse: 'ocoa' as const }; if (ei >= 0) { setItems(prev => prev.map((item,i) => i===ei ? newItem : item)); } else { setItems(prev => [...prev, newItem]); } setSuccess(`Producto agregado: ${found.name}`); setTimeout(() => setSuccess(''), 3000); } else { setError(`No se encontro producto con codigo: ${code}`); setTimeout(() => setError(''), 3000); } setBarcodeInput(''); }
+
+    function toggleScanner() { setScannerActive(!scannerActive); if (!scannerActive) { setTimeout(() => barcodeInputRef.current?.focus(), 100); } }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +123,7 @@ export default function ComprasPage() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h4 className="font-medium text-gray-800 text-sm">Productos</h4>
+              <h4 className="font-medium text-gray-800 text-sm">Productos</h4><button type="button" onClick={toggleScanner} className={`px-3 py-1 text-xs rounded-lg ${scannerActive?'bg-red-600 text-white':'bg-blue-600 text-white'}`}>{scannerActive?'Detener':'Escanear Código'}</button>
               <div className="relative">
                 <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Buscar producto..." className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"/>
                 {productSearch && filteredProducts.length > 0 && (
