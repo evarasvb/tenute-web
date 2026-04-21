@@ -43,9 +43,6 @@ export async function POST(request: NextRequest) {
     const { customer_name, customer_phone, customer_rut, sale_date, payment_method, discount, notes, items } = body;
 
   // --- Input validation ---
-  if (!customer_name || typeof customer_name !== 'string' || customer_name.trim() === '') {
-        return NextResponse.json({ error: 'Nombre de cliente requerido' }, { status: 400 });
-  }
     if (!Array.isArray(items) || items.length === 0) {
           return NextResponse.json({ error: 'Al menos un item es requerido' }, { status: 400 });
     }

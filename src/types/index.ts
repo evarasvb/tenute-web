@@ -69,7 +69,7 @@ export interface Proveedor {
 // ─────────────────────────────────────────────
 // Order types
 // ─────────────────────────────────────────────
-export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+export type OrderStatus = 'pending' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
 
 export interface OrderItem {
   id: string;
@@ -80,7 +80,7 @@ export interface OrderItem {
   product_image_url?: string;
   quantity: number;
   unit_price: number;
-  total_price: number;
+  subtotal: number;
 }
 
 export interface Order {
@@ -92,15 +92,20 @@ export interface Order {
   customer_rut?: string;
   shipping_address?: string;
   shipping_commune?: string;
+  shipping_city?: string;
   shipping_region?: string;
-  shipping_cost?: number;
+  shipping_method?: string;
+  shipping_cost: number;
   subtotal: number;
   discount?: number;
   total: number;
   status: OrderStatus;
   payment_method?: string;
+  payment_id?: string;
   payment_status?: string;
   notes?: string;
+  admin_notes?: string;
+  tracking_number?: string;
   items?: OrderItem[];
   created_at: string;
   updated_at?: string;

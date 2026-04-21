@@ -11,7 +11,7 @@ interface Product {
   cost_price: number | null;
   stock: number;
   stock_ocoa: number;
-  stock_local: number;
+  stock_local21: number;
   image_url: string | null;
   brand: string | null;
   active: boolean;
@@ -49,9 +49,9 @@ export default function StockPage() {
 
   // Summary calculations using cost_price
   const totalOcoa = products.reduce((s, p) => s + (p.stock_ocoa || 0), 0);
-  const totalLocal = products.reduce((s, p) => s + (p.stock_local || 0), 0);
+  const totalLocal = products.reduce((s, p) => s + (p.stock_local21 || 0), 0);
   const valueOcoa = products.reduce((s, p) => s + (p.cost_price || 0) * (p.stock_ocoa || 0), 0);
-  const valueLocal = products.reduce((s, p) => s + (p.cost_price || 0) * (p.stock_local || 0), 0);
+  const valueLocal = products.reduce((s, p) => s + (p.cost_price || 0) * (p.stock_local21 || 0), 0);
 
   // Filter products
   const filtered = products.filter(p => {
@@ -61,14 +61,14 @@ export default function StockPage() {
     const matchWarehouse =
       warehouseFilter === 'all' ||
       (warehouseFilter === 'ocoa' && (p.stock_ocoa || 0) > 0) ||
-      (warehouseFilter === 'local' && (p.stock_local || 0) > 0);
+      (warehouseFilter === 'local' && (p.stock_local21 || 0) > 0);
     return matchSearch && matchWarehouse;
   });
 
   const startEdit = (p: Product) => {
     setEditingId(p.id);
     setEditOcoa(p.stock_ocoa || 0);
-    setEditLocal(p.stock_local || 0);
+    setEditLocal(p.stock_local21 || 0);
   };
 
   const cancelEdit = () => { setEditingId(null); };
@@ -79,12 +79,12 @@ export default function StockPage() {
       const resp = await fetch(`/api/admin/products/${productId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stock_ocoa: editOcoa, stock_local: editLocal, stock: editOcoa + editLocal }),
+        body: JSON.stringify({ stock_ocoa: editOcoa, stock_local21: editLocal, stock: editOcoa + editLocal }),
       });
       if (!resp.ok) throw new Error('Error guardando');
       setProducts(prev => prev.map(p =>
         p.id === productId
-          ? { ...p, stock_ocoa: editOcoa, stock_local: editLocal, stock: editOcoa + editLocal }
+          ? { ...p, stock_ocoa: editOcoa, stock_local21: editLocal, stock: editOcoa + editLocal }
           : p
       ));
       setEditingId(null);
@@ -257,20 +257,20 @@ export default function StockPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={`font-medium ${(p.stock_local || 0) > 0 ? 'text-purple-700' : 'text-gray-300'}`}>
-                          {p.stock_local || 0}
+                        <span className={`font-medium ${(p.stock_local21 || 0) > 0 ? 'text-purple-700' : 'text-gray-300'}`}>
+                          {p.stock_local21 || 0}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span className={`font-bold ${(p.stock || 0) > 0 ? 'text-gray-800' : 'text-red-400'}`}>
-                          {(p.stock_ocoa || 0) + (p.stock_local || 0)}
+                          {(p.stock_ocoa || 0) + (p.stock_local21 || 0)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right hidden xl:table-cell text-blue-600 text-xs">
                         {p.cost_price && (p.stock_ocoa || 0) > 0 ? formatCLP(p.cost_price * (p.stock_ocoa || 0)) : <span className="text-gray-300">â</span>}
                       </td>
                       <td className="px-4 py-3 text-right hidden xl:table-cell text-purple-600 text-xs">
-                        {p.cost_price && (p.stock_local || 0) > 0 ? formatCLP(p.cost_price * (p.stock_local || 0)) : <span className="text-gray-300">â</span>}
+                        {p.cost_price && (p.stock_local21 || 0) > 0 ? formatCLP(p.cost_price * (p.stock_local21 || 0)) : <span className="text-gray-300">â</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button

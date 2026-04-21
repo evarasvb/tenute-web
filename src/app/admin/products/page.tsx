@@ -12,7 +12,7 @@ interface Product {
   cost_price: number;
   stock: number;
   stock_ocoa: number;
-  stock_local: number;
+  stock_local21: number;
   brand: string;
   image_url: string;
   category_id: string;
@@ -84,7 +84,7 @@ export default function AdminProductsPage() {
     if (activeFilter) params.set('active', activeFilter);
     const res = await fetch('/api/admin/products?' + params);
     const data = await res.json();
-    let items: Product[] = data.data || [];
+    let items: Product[] = data.products || [];
     if (hasCostMarginFilter) {
       if (costMin) items = items.filter(p => (p.cost_price || 0) >= Number(costMin));
       if (costMax) items = items.filter(p => (p.cost_price || 0) <= Number(costMax));

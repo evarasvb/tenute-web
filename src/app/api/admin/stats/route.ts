@@ -6,11 +6,11 @@ export async function GET(request: NextRequest) {
   if (session?.value !== 'authenticated') return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const supabase = createAdminClient();
   const { data: products } = await supabase
-    .from('products').select('id, price, cost_price, stock, stock_ocoa, stock_local, image_url, active');
+    .from('products').select('id, price, cost_price, stock, stock_ocoa, stock_local21, image_url, active');
   const total = products?.length || 0;
   const withImages = products?.filter(p => p.image_url && p.image_url.trim() !== '').length || 0;
   const totalStockValue = products?.reduce((sum, p) => sum + (p.price || 0) * (p.stock || 0), 0) || 0;
-  const totalCostValue = products?.reduce((sum, p) => sum + (p.cost_price || 0) * ((p.stock_ocoa || 0) + (p.stock_local || 0)), 0) || 0;
+  const totalCostValue = products?.reduce((sum, p) => sum + (p.cost_price || 0) * ((p.stock_ocoa || 0) + (p.stock_local21 || 0)), 0) || 0;
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   let webOrdersRevenue = 0, webOrdersCount = 0;

@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data, count, page, limit });
+  return NextResponse.json({ products: data, count, page, limit });
 }
 
 export async function POST(request: NextRequest) {
