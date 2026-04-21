@@ -9,7 +9,7 @@
 // (The same logic lives in /api/admin/ean/suggest/route.ts)
 // ─────────────────────────────────────────────
 function validateEAN13(code: string): boolean {
-  if (!/^d{13}$/.test(code)) return false;
+  if (code.length !== 13 || !/^[0-9]{13}$/.test(code)) return false;
   let sum = 0;
   for (let i = 0; i < 12; i++) {
     sum += parseInt(code[i]) * (i % 2 === 0 ? 1 : 3);
