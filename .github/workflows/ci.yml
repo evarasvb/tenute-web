@@ -26,8 +26,11 @@ jobs:
           node-version: 20
           cache: npm
 
+      # Use npm install (not npm ci) because package-lock.json may lag behind
+      # package.json when devDependencies are added via GitHub web editor.
+      # Once package-lock.json is committed locally, switch back to npm ci.
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       # Provide dummy env vars so Next.js build doesn't fail on missing NEXT_PUBLIC_* vars
       # These are placeholder values — real values live in Vercel/production env
@@ -56,5 +59,4 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # Ensure build uses the .env.local we created above
           NODE_ENV: production
