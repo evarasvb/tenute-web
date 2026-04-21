@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validateEAN13 } from '@/lib/ean';
 
 function checkAuth(request: NextRequest) {
   const session = request.cookies.get('admin_session');
@@ -13,17 +14,6 @@ function normalize(text: string): string {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function isEan13(code: string): boolean {
-  if (!/^\d{13}$/.test(code)) return false;
-  const digits = code.split('').map(Number);
-  const checkDigit = digits[12];
-  const sum = digits
-    .slice(0, 12)
-    .reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 1 : 3), 0);
-  const calc = (10 - (sum % 10)) % 10;
-  return calc === checkDigit;
 }
 
 type Candidate = {
@@ -77,7 +67,7 @@ export async function POST(request: NextRequest) {
         const ean = String(p.code || '').trim();
         const productName = String(p.product_name || p.generic_name || '').trim();
         const brands = String(p.brands || '').trim();
-        if (!isEan13(ean) || !productName) return null;
+        if (!validateEAN13(ean) || !productName) return null;
         const score = scoreCandidate(name, brand, productName, brands);
         return {
           ean,

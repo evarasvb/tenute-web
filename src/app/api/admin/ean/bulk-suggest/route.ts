@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { normalizeBarcodeDigits, validateEAN13 } from '@/lib/ean';
 
 type Confidence = 'alta' | 'media' | 'baja';
-
-interface Candidate {
-  ean: string;
-  source: string;
-  product_name: string;
-  score: number;
-  confidence: Confidence;
-}
 
 function checkAuth(request: NextRequest) {
   const session = request.cookies.get('admin_session');
@@ -20,56 +13,74 @@ function checkAuth(request: NextRequest) {
 }
 
 function normalizeText(v: string): string {
-  return v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+  return v
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function confidenceFromScore(score: number): Confidence {
-  if (score >= 85) return 'alta';
-  if (score >= 60) return 'media';
+  if (score >= 75) return 'alta';
+  if (score >= 50) return 'media';
   return 'baja';
 }
 
-function computeScore(productName: string, brand: string | null, hitName: string): number {
-  const pName = normalizeText(productName);
-  const hName = normalizeText(hitName);
-  const pTokens = pName.split(' ').filter(Boolean);
-  const hitTokens = hName.split(' ').filter(Boolean);
-  const overlap = pTokens.filter((t) => hitTokens.includes(t)).length;
-  const tokenScore = pTokens.length ? Math.round((overlap / pTokens.length) * 70) : 0;
-  const brandScore = brand && hName.includes(normalizeText(brand)) ? 20 : 0;
-  const containsScore = hName.includes(pName) ? 10 : 0;
-  return Math.min(100, tokenScore + brandScore + containsScore);
+function scoreCandidate(queryName: string, queryBrand: string, hitName: string, hitBrand: string): number {
+  const nq = normalizeText(queryName);
+  const nb = normalizeText(queryBrand);
+  const nn = normalizeText(hitName);
+  const ncb = normalizeText(hitBrand);
+  let score = 0;
+  if (nn.includes(nq) || nq.includes(nn)) score += 50;
+  const tokens = nq.split(' ').filter((t) => t.length > 2);
+  const hits = tokens.filter((t) => nn.includes(t)).length;
+  score += Math.min(30, hits * 8);
+  if (nb && ncb && (ncb.includes(nb) || nb.includes(ncb))) score += 20;
+  return Math.min(100, score);
 }
 
-async function searchCandidates(productName: string, brand?: string | null): Promise<Candidate[]> {
+async function searchBestEan(productName: string, brand?: string | null): Promise<{
+  ean: string;
+  product_name: string;
+  brands: string;
+  score: number;
+  confidence: Confidence;
+  source: string;
+} | null> {
   const query = [brand, productName].filter(Boolean).join(' ').trim();
-  if (!query) return [];
+  if (!query) return null;
 
   const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&json=1&page_size=15`;
   const resp = await fetch(url, { next: { revalidate: 0 } });
-  if (!resp.ok) return [];
+  if (!resp.ok) return null;
 
   const data = await resp.json();
   const products = Array.isArray(data.products) ? data.products : [];
 
-  return products
+  type Hit = { ean: string; product_name: string; brands: string; score: number; confidence: Confidence; source: string };
+  const hits: Hit[] = products
     .map((p: Record<string, unknown>) => {
-      const code = typeof p.code === 'string' ? p.code : '';
-      if (!/^\d{8,14}$/.test(code)) return null;
-      const name = typeof p.product_name === 'string' ? p.product_name : code;
-      const score = computeScore(productName, brand || null, name);
+      const code = normalizeBarcodeDigits(String(p.code || ''));
+      const name = String(p.product_name || p.generic_name || '').trim();
+      const brands = String(p.brands || '').trim();
+      if (!validateEAN13(code) || !name) return null;
+      const score = scoreCandidate(productName, brand || '', name, brands);
       return {
         ean: code,
         product_name: name,
+        brands,
         score,
         confidence: confidenceFromScore(score),
-        source: 'openfoodfacts',
-      } as Candidate;
+        source: 'OpenFoodFacts',
+      };
     })
-    .filter((c: Candidate | null): c is Candidate => !!c)
-    .sort((a: Candidate, b: Candidate) => b.score - a.score)
-    .filter((c: Candidate, idx: number, arr: Candidate[]) => arr.findIndex((x) => x.ean === c.ean) === idx)
-    .slice(0, 3);
+    .filter((h: Hit | null): h is Hit => !!h)
+    .sort((a: Hit, b: Hit) => b.score - a.score);
+
+  return hits[0] || null;
 }
 
 export async function POST(request: NextRequest) {
@@ -77,7 +88,7 @@ export async function POST(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const limit = Math.min(100, Math.max(1, Number(body?.limit) || 30));
     const onlyWithoutBarcode = body?.only_without_barcode !== false;
 
@@ -98,23 +109,40 @@ export async function POST(request: NextRequest) {
     }
 
     const products = data || [];
-    const results = [];
+    const suggestions: Array<{
+      productId: string;
+      productName: string;
+      currentBarcode: string | null;
+      suggestedEan: string;
+      confidence: Confidence;
+      score: number;
+      source: string;
+      referenceName?: string;
+    }> = [];
 
     for (const p of products) {
-      const candidates = await searchCandidates(p.name || '', p.brand || '');
-      results.push({
-        product_id: p.id,
-        product_name: p.name,
-        brand: p.brand,
-        sku: p.sku,
-        current_barcode: p.barcode,
-        best: candidates[0] || null,
-        candidates,
+      if (p.barcode && String(p.barcode).trim() !== '') continue;
+
+      const best = await searchBestEan(p.name || '', p.brand || null);
+      if (!best) continue;
+
+      suggestions.push({
+        productId: p.id,
+        productName: p.name || '',
+        currentBarcode: p.barcode,
+        suggestedEan: best.ean,
+        confidence: best.confidence,
+        score: best.score,
+        source: best.source,
+        referenceName: best.product_name,
       });
     }
 
-    return NextResponse.json({ total: results.length, results });
+    return NextResponse.json({ suggestions, total: suggestions.length });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Error sugiriendo EAN en lote' }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Error sugiriendo EAN en lote' },
+      { status: 500 }
+    );
   }
 }

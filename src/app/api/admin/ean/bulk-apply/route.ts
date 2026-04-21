@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { normalizeBarcodeDigits, validateEAN13 } from '@/lib/ean';
 
 function checkAuth(request: NextRequest) {
   const session = request.cookies.get('admin_session');
@@ -9,10 +10,7 @@ function checkAuth(request: NextRequest) {
   return null;
 }
 
-type BulkApplyItem = {
-  product_id: string;
-  ean: string;
-};
+type UpdateRow = { productId?: string; product_id?: string; ean: string };
 
 export async function POST(request: NextRequest) {
   const authError = checkAuth(request);
@@ -20,42 +18,48 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const items: BulkApplyItem[] = Array.isArray(body?.items) ? body.items : [];
+    const raw: UpdateRow[] = Array.isArray(body?.updates)
+      ? body.updates
+      : Array.isArray(body?.items)
+        ? body.items
+        : [];
 
-    if (!items.length) {
+    if (!raw.length) {
       return NextResponse.json({ error: 'No hay items para aplicar' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
-
-    let updated = 0;
+    const applied: { productId: string; ean: string }[] = [];
     const errors: string[] = [];
 
-    for (const item of items) {
-      if (!item.product_id || !item.ean) {
-        errors.push('Item inválido (falta product_id o ean)');
+    for (const row of raw) {
+      const productId = row.productId || row.product_id;
+      const ean = normalizeBarcodeDigits(String(row.ean || ''));
+
+      if (!productId || !ean) {
+        errors.push('Item inválido (falta productId o ean)');
         continue;
       }
 
-      const normalized = String(item.ean).replace(/\D/g, '');
-      if (normalized.length < 8 || normalized.length > 14) {
-        errors.push(`EAN inválido para ${item.product_id}`);
+      if (ean.length !== 13 || !validateEAN13(ean)) {
+        errors.push(`${productId}: EAN-13 inválido (${ean})`);
         continue;
       }
 
-      const { error } = await supabase
-        .from('products')
-        .update({ barcode: normalized })
-        .eq('id', item.product_id);
+      const { error } = await supabase.from('products').update({ barcode: ean }).eq('id', productId);
 
       if (error) {
-        errors.push(`${item.product_id}: ${error.message}`);
+        errors.push(`${productId}: ${error.message}`);
       } else {
-        updated += 1;
+        applied.push({ productId, ean });
       }
     }
 
-    return NextResponse.json({ updated, errors });
+    return NextResponse.json({
+      appliedCount: applied.length,
+      applied,
+      errors,
+    });
   } catch {
     return NextResponse.json({ error: 'Error aplicando EAN en lote' }, { status: 500 });
   }
