@@ -76,6 +76,7 @@ export default function AdminProductsPage() {
   const [eanBulkLoading, setEanBulkLoading] = useState(false);
   const [eanSuggestions, setEanSuggestions] = useState<EanSuggestion[]>([]);
   const [eanApplyingId, setEanApplyingId] = useState<string | null>(null);
+  const [eanApplyingBulk, setEanApplyingBulk] = useState(false);
   const [eanBulkMessage, setEanBulkMessage] = useState('');
   const importFileRef = useRef<HTMLInputElement>(null);
   const limit = 50;
@@ -243,6 +244,37 @@ export default function AdminProductsPage() {
       setEanBulkMessage(err instanceof Error ? err.message : 'Error aplicando EAN');
     } finally {
       setEanApplyingId(null);
+    }
+  }
+
+  async function applyHighConfidenceBulk() {
+    const rows = eanSuggestions
+      .filter((s) => s.confidence === 'alta')
+      .map((s) => ({ productId: s.productId, ean: s.suggestedEan }));
+    if (rows.length === 0) {
+      setEanBulkMessage('No hay sugerencias de confianza alta para aplicar');
+      return;
+    }
+
+    setEanApplyingBulk(true);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch('/api/admin/ean/bulk-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error aplicando EAN masivo');
+
+      const appliedIds = new Set<string>((data.applied || []).map((r: { productId: string }) => r.productId));
+      setEanSuggestions((prev) => prev.filter((s) => !appliedIds.has(s.productId)));
+      setEanBulkMessage(`Aplicados ${data.appliedCount || 0} EAN de confianza alta`);
+      fetchProducts();
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error aplicando en lote');
+    } finally {
+      setEanApplyingBulk(false);
     }
   }
 
@@ -498,6 +530,9 @@ export default function AdminProductsPage() {
             <div className="flex items-center gap-2 mb-3">
               <button onClick={loadBulkEanSuggestions} disabled={eanBulkLoading} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">
                 {eanBulkLoading ? 'Buscando...' : 'Refrescar sugerencias'}
+              </button>
+              <button onClick={applyHighConfidenceBulk} disabled={eanApplyingBulk || eanSuggestions.length === 0} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                {eanApplyingBulk ? 'Aplicando...' : 'Aplicar todas (alta)'}
               </button>
               {eanBulkMessage && <span className="text-sm text-gray-600">{eanBulkMessage}</span>}
             </div>
