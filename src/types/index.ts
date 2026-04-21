@@ -26,6 +26,7 @@ export interface Product {
   stock: number;
   stock_ocoa?: number;
   stock_local21?: number;
+  stock_local?: number;
   condition: string;
   image_url?: string;
   images?: string[];

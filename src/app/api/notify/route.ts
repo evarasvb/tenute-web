@@ -85,11 +85,15 @@ export async function POST(request: Request) {
       message = buildOrderWhatsAppMessage(order);
     }
 
+    const notificationEmail = process.env.TENUTE_NOTIFICATION_EMAIL || 'tenute@gmail.com';
+    const billingEmail = process.env.TENUTE_BILLING_EMAIL || 'tenute@gmail.com';
     const whatsappUrl = `https://wa.me/56987299147?text=${encodeURIComponent(message)}`;
 
     return NextResponse.json({
       message,
       whatsapp_url: whatsappUrl,
+      notification_email: notificationEmail,
+      billing_email: billingEmail,
     });
   } catch {
     return NextResponse.json(

@@ -382,7 +382,7 @@ export default function CheckoutClient() {
           orderId: order.id,
           orderNumber: order.order_number,
           amount: grandTotal,
-          email: customer.email || 'cliente@tenute.cl',
+          email: customer.email || undefined,
         }),
       });
 

@@ -57,9 +57,17 @@ export default function ProductEditorPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [publishingIG, setPublishingIG] = useState(false);
   const [igResult, setIgResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [igConfigured, setIgConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/categories').then(r => r.json()).then(setCategories);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/instagram')
+      .then(r => r.json())
+      .then((data) => setIgConfigured(Boolean(data.configured)))
+      .catch(() => setIgConfigured(false));
   }, []);
 
   useEffect(() => {
@@ -324,7 +332,7 @@ export default function ProductEditorPage() {
             {product.image_url && (
               <button
                 onClick={handlePublishInstagram}
-                disabled={publishingIG}
+                disabled={publishingIG || igConfigured === false}
                 title="Publicar en Instagram"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-xs font-medium hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all"
               >
@@ -355,6 +363,11 @@ export default function ProductEditorPage() {
       {igResult?.error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
           Instagram: {igResult.error}
+        </div>
+      )}
+      {igConfigured === false && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
+          Instagram no configurado. Debes definir INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID.
         </div>
       )}
 
@@ -660,4 +673,4 @@ export default function ProductEditorPage() {
       )}
     </div>
   );
-      }
+}

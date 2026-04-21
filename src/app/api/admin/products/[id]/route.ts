@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { buildMetadata, getWarehouseStock, parseMetadata } from '@/lib/product-metadata';
 
 function checkAuth(request: NextRequest) {
   const session = request.cookies.get('admin_session');
@@ -27,6 +28,42 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const body = await request.json();
 
   const updateData: Record<string, unknown> = { ...body };
+
+  // Backward compatibility: some clients still send stock_local instead of stock_local21.
+  if (typeof updateData.stock_local === 'number' && typeof updateData.stock_local21 !== 'number') {
+    updateData.stock_local21 = updateData.stock_local;
+  }
+  delete updateData.stock_local;
+
+  if (typeof updateData.stock_ocoa === 'number' || typeof updateData.stock_local21 === 'number') {
+    const { data: currentProduct } = await supabase
+      .from('products')
+      .select('stock_ocoa, stock_local21, stock, metadata')
+      .eq('id', params.id)
+      .single();
+
+    const currentStock = currentProduct
+      ? getWarehouseStock(currentProduct as unknown as Record<string, unknown>)
+      : { ocoa: 0, local21: 0 };
+
+    const nextOcoa = typeof updateData.stock_ocoa === 'number' ? updateData.stock_ocoa : currentStock.ocoa;
+    const nextLocal21 = typeof updateData.stock_local21 === 'number' ? updateData.stock_local21 : currentStock.local21;
+
+    updateData.stock_ocoa = nextOcoa;
+    updateData.stock_local21 = nextLocal21;
+    updateData.stock = Math.max(0, nextOcoa + nextLocal21);
+
+    const currentMeta = parseMetadata(currentProduct?.metadata);
+    const bodyMeta = parseMetadata(updateData.metadata);
+    updateData.metadata = buildMetadata({
+      additional_images: bodyMeta.additional_images ?? currentMeta.additional_images ?? [],
+      video_url: bodyMeta.video_url ?? currentMeta.video_url,
+      warehouse_stock: {
+        ocoa: nextOcoa,
+        local21: nextLocal21,
+      },
+    });
+  }
 
   const { data, error } = await supabase
     .from('products')
