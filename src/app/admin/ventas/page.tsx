@@ -8,7 +8,7 @@ interface Product {
   price: number;
   cost_price: number | null;
   stock: number;
-  stock_local: number;
+  stock_local21: number;
   stock_ocoa: number;
   sku: string | null;
     barcode: string | null;
@@ -67,14 +67,14 @@ export default function VentasPage() {
 
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<Product[]>([]);
-    const [scannerActive, setScannerActive] = useState(false);
+  const [scannerActive, setScannerActive] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/admin/products?limit=500');
     const data = await res.json();
-    setProducts(data.products || []);
+    setProducts(data.data || data.products || []);
   }, []);
 
   const fetchSales = useCallback(async () => {
@@ -92,7 +92,7 @@ export default function VentasPage() {
 
   useEffect(() => {
     if (!productSearch.trim()) { setProductResults([]); return; }
-    const q = productSearch.toLowerCase();
+    const q = productSearch.trim().toLowerCase();
     setProductResults(
       products.filter(p =>
         p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q)) || (p.barcode && p.barcode.toLowerCase().includes(q))
@@ -123,9 +123,18 @@ export default function VentasPage() {
     setProductResults([]);
   }
 
-    function handleBarcodeScan(code: string) {
+  function findProductByCode(rawCode: string) {
+    const code = rawCode.trim().toLowerCase();
+    if (!code) return null;
+    return products.find((p: Product) =>
+      (p.barcode || '').trim().toLowerCase() === code ||
+      (p.sku || '').trim().toLowerCase() === code
+    ) || null;
+  }
+
+  function handleBarcodeScan(code: string) {
     if (!code.trim()) return;
-    const found = products.find((p: Product) => p.barcode === code || p.sku === code);
+    const found = findProductByCode(code);
     if (found) {
       addProduct(found);
       setSuccess(`Producto agregado por scanner: ${found.name}`);
@@ -282,6 +291,18 @@ export default function VentasPage() {
               type="text"
               value={productSearch}
               onChange={e => setProductSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const foundByCode = findProductByCode(productSearch);
+                if (foundByCode) {
+                  addProduct(foundByCode);
+                  return;
+                }
+                if (productResults.length > 0) {
+                  addProduct(productResults[0]);
+                }
+              }}
               placeholder="Buscar por nombre, SKU o código de barras..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -311,7 +332,7 @@ export default function VentasPage() {
                     className="w-full text-left px-4 py-2.5 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-0">
                     <div className="font-medium text-gray-900">{p.name}</div>
                     <div className="text-xs text-gray-500">
-                      {formatCLP(p.price)} · Stock local: {p.stock_local} · Ocoa: {p.stock_ocoa}
+                      {formatCLP(p.price)} · Stock local: {p.stock_local21} · Ocoa: {p.stock_ocoa}
                     </div>
                   </button>
                 ))}

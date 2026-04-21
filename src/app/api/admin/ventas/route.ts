@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildMetadata, getWarehouseStock, parseMetadata } from '@/lib/product-metadata';
 import { createAdminClient } from '@/lib/supabase';
 
 function checkAuth(req: NextRequest) {
@@ -31,8 +32,8 @@ export async function POST(request: NextRequest) {
   if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const body = await request.json();
   const { customer_name, customer_phone, customer_rut, sale_date, payment_method, discount, notes, items } = body;
-  if (!customer_name || !items || items.length === 0) {
-    return NextResponse.json({ error: 'Cliente e items son requeridos' }, { status: 400 });
+  if (!items || items.length === 0) {
+    return NextResponse.json({ error: 'Debes agregar al menos un producto' }, { status: 400 });
   }
   const supabase = createAdminClient();
   const { data: lastSale } = await supabase.from('manual_sales').select('sale_number').order('created_at', { ascending: false }).limit(1).maybeSingle();
@@ -48,10 +49,14 @@ export async function POST(request: NextRequest) {
   const total = subtotal - discountAmount;
   for (const item of items) {
     if (!item.product_id) continue;
-    const { data: product } = await supabase.from('products').select('stock, stock_ocoa, stock_local, name').eq('id', item.product_id).single();
+    const { data: product } = await supabase
+      .from('products')
+      .select('stock, stock_ocoa, stock_local21, metadata, name')
+      .eq('id', item.product_id)
+      .single();
     if (!product) continue;
-    const stockField = item.warehouse === 'local' ? 'stock_local' : 'stock_ocoa';
-    const available = (product[stockField as keyof typeof product] as number) || 0;
+    const warehouseStock = getWarehouseStock(product as unknown as Record<string, unknown>);
+    const available = item.warehouse === 'local' ? warehouseStock.local21 : warehouseStock.ocoa;
     if (available < item.quantity) {
       return NextResponse.json({ error: `Stock insuficiente para "${product.name}". Disponible: ${available}` }, { status: 400 });
     }
@@ -71,15 +76,33 @@ export async function POST(request: NextRequest) {
   if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 500 });
   for (const item of items) {
     if (!item.product_id) continue;
-    const { data: product } = await supabase.from('products').select('stock, stock_ocoa, stock_local').eq('id', item.product_id).single();
+    const { data: product } = await supabase
+      .from('products')
+      .select('stock, stock_ocoa, stock_local21, metadata')
+      .eq('id', item.product_id)
+      .single();
     if (!product) continue;
-    const stockField = item.warehouse === 'local' ? 'stock_local' : 'stock_ocoa';
-    const current = (product[stockField as keyof typeof product] as number) || 0;
-    await supabase.from('products').update({
-      [stockField]: Math.max(0, current - item.quantity),
-      stock: Math.max(0, (product.stock || 0) - item.quantity),
-      updated_at: new Date().toISOString(),
-    }).eq('id', item.product_id);
+    const current = getWarehouseStock(product as unknown as Record<string, unknown>);
+    const next = {
+      ocoa: Math.max(0, current.ocoa - (item.warehouse === 'ocoa' ? item.quantity : 0)),
+      local21: Math.max(0, current.local21 - (item.warehouse === 'local' ? item.quantity : 0)),
+    };
+    const prevMeta = parseMetadata(product.metadata);
+    const metadata = buildMetadata({
+      additional_images: prevMeta.additional_images || [],
+      video_url: prevMeta.video_url,
+      warehouse_stock: next,
+    });
+    await supabase
+      .from('products')
+      .update({
+        stock_ocoa: next.ocoa,
+        stock_local21: next.local21,
+        stock: next.ocoa + next.local21,
+        metadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', item.product_id);
   }
   return NextResponse.json({ sale, success: true }, { status: 201 });
 }

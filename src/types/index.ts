@@ -65,3 +65,61 @@ export interface Proveedor {
   created_at: string;
   updated_at?: string;
 }
+
+export interface ShippingZone {
+  id: string;
+  zone_type: 'local' | 'starken';
+  commune_name: string;
+  delivery_cost: number;
+  estimated_days: string;
+  description?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type OrderStatus =
+  | 'pending'
+  | 'paid'
+  | 'preparing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled';
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id?: string | null;
+  product_name: string;
+  product_sku?: string | null;
+  product_image_url?: string | null;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string | null;
+  customer_rut?: string | null;
+  shipping_method: 'pickup' | 'local_delivery' | 'starken' | string;
+  shipping_address?: string | null;
+  shipping_commune?: string | null;
+  shipping_city?: string | null;
+  shipping_region?: string | null;
+  shipping_cost: number;
+  payment_method: string;
+  payment_id?: string | null;
+  status: OrderStatus | string;
+  subtotal: number;
+  total: number;
+  tracking_number?: string | null;
+  notes?: string | null;
+  admin_notes?: string | null;
+  created_at: string;
+  updated_at?: string;
+  items?: OrderItem[];
+}
