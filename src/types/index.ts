@@ -64,3 +64,57 @@ export interface Proveedor {
   created_at: string;
   updated_at?: string;
 }
+
+
+// ─────────────────────────────────────────────
+// Order types
+// ─────────────────────────────────────────────
+export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id?: string;
+  product_name: string;
+  product_sku?: string;
+  product_image_url?: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_rut?: string;
+  shipping_address?: string;
+  shipping_commune?: string;
+  shipping_region?: string;
+  shipping_cost?: number;
+  subtotal: number;
+  discount?: number;
+  total: number;
+  status: OrderStatus;
+  payment_method?: string;
+  payment_status?: string;
+  notes?: string;
+  items?: OrderItem[];
+  created_at: string;
+  updated_at?: string;
+}
+
+// ─────────────────────────────────────────────
+// Shipping types
+// ─────────────────────────────────────────────
+export type ShippingZoneType = 'free' | 'local' | 'starken';
+
+export interface ShippingZone {
+  id: string;
+  commune_name: string;
+  zone_type: ShippingZoneType;
+  delivery_cost: number;
+  estimated_days?: string;
+}
