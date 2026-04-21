@@ -1,0 +1,60 @@
+# CI pipeline — tenute-web
+# Runs lint + build + tests on every push/PR to main
+# All env vars that are needed at BUILD TIME are provided as dummy values
+# to prevent Next.js from failing on missing vars during static analysis.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Provide dummy env vars so Next.js build doesn't fail on missing NEXT_PUBLIC_* vars
+      # These are placeholder values — real values live in Vercel/production env
+      - name: Create .env.local for build
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
+          SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
+          ADMIN_PASSWORD=ci_placeholder
+          FLOW_API_KEY=placeholder
+          FLOW_SECRET_KEY=placeholder
+          FLOW_SANDBOX=true
+          NEXT_PUBLIC_BASE_URL=http://localhost:3000
+          EOF
+
+      - name: Lint (non-interactive)
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm run test:ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # Ensure build uses the .env.local we created above
+          NODE_ENV: production
