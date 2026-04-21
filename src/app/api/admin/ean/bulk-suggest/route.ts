@@ -1,148 +1,124 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
-import { normalizeBarcodeDigits, validateEAN13 } from '@/lib/ean';
+import { validateEAN13, normaliseBarcode } from '@/app/api/admin/ean/suggest/route';
 
-type Confidence = 'alta' | 'media' | 'baja';
+// Bulk-suggest: find EAN suggestions for multiple products at once
+// POST body: { product_ids: string[] }
+// Returns: { results: Array<{ product_id, name, sku, current_barcode, suggestions }>, meta: { queried, suggested, skipped } }
 
-function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+// ─────────────────────────────────────────────
+// Rate limiter: max 5 bulk req/min per IP
+// ─────────────────────────────────────────────
+const rateLimitMap = new Map<string, { count: number; ts: number }>();
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 60_000;
+const MAX_BATCH = 50;
+
+function rateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now - entry.ts > RATE_WINDOW_MS) {
+    rateLimitMap.set(ip, { count: 1, ts: now });
+    return false;
   }
-  return null;
+  if (entry.count >= RATE_LIMIT) return true;
+  entry.count++;
+  return false;
 }
 
-function normalizeText(v: string): string {
-  return v
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function confidenceFromScore(score: number): Confidence {
-  if (score >= 75) return 'alta';
-  if (score >= 50) return 'media';
-  return 'baja';
-}
-
-function scoreCandidate(queryName: string, queryBrand: string, hitName: string, hitBrand: string): number {
-  const nq = normalizeText(queryName);
-  const nb = normalizeText(queryBrand);
-  const nn = normalizeText(hitName);
-  const ncb = normalizeText(hitBrand);
-  let score = 0;
-  if (nn.includes(nq) || nq.includes(nn)) score += 50;
-  const tokens = nq.split(' ').filter((t) => t.length > 2);
-  const hits = tokens.filter((t) => nn.includes(t)).length;
-  score += Math.min(30, hits * 8);
-  if (nb && ncb && (ncb.includes(nb) || nb.includes(ncb))) score += 20;
-  return Math.min(100, score);
-}
-
-async function searchBestEan(productName: string, brand?: string | null): Promise<{
-  ean: string;
-  product_name: string;
-  brands: string;
-  score: number;
-  confidence: Confidence;
-  source: string;
-} | null> {
-  const query = [brand, productName].filter(Boolean).join(' ').trim();
-  if (!query) return null;
-
-  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&json=1&page_size=15`;
-  const resp = await fetch(url, { next: { revalidate: 0 } });
-  if (!resp.ok) return null;
-
-  const data = await resp.json();
-  const products = Array.isArray(data.products) ? data.products : [];
-
-  type Hit = { ean: string; product_name: string; brands: string; score: number; confidence: Confidence; source: string };
-  const hits: Hit[] = products
-    .map((p: Record<string, unknown>) => {
-      const code = normalizeBarcodeDigits(String(p.code || ''));
-      const name = String(p.product_name || p.generic_name || '').trim();
-      const brands = String(p.brands || '').trim();
-      if (!validateEAN13(code) || !name) return null;
-      const score = scoreCandidate(productName, brand || '', name, brands);
-      return {
-        ean: code,
-        product_name: name,
-        brands,
-        score,
-        confidence: confidenceFromScore(score),
-        source: 'OpenFoodFacts',
-      };
-    })
-    .filter((h: Hit | null): h is Hit => !!h)
-    .sort((a: Hit, b: Hit) => b.score - a.score);
-
-  return hits[0] || null;
+function checkAuth(req: NextRequest) {
+  return req.cookies.get('admin_session')?.value === 'authenticated';
 }
 
 export async function POST(request: NextRequest) {
-  const authError = checkAuth(request);
-  if (authError) return authError;
+  if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
+  const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
+  if (rateLimit(ip)) {
+    return NextResponse.json({ error: 'Demasiadas solicitudes bulk. Espera un minuto.' }, { status: 429 });
+  }
+
+  const body = await request.json();
+  const productIds: string[] = body?.product_ids ?? [];
+
+  if (!Array.isArray(productIds) || productIds.length === 0) {
+    return NextResponse.json({ error: 'product_ids es requerido y no debe estar vacío' }, { status: 400 });
+  }
+  if (productIds.length > MAX_BATCH) {
+    return NextResponse.json({ error: `Máximo ${MAX_BATCH} productos por lote` }, { status: 400 });
+  }
+
+  const supabase = createAdminClient();
+  const { data: products, error } = await supabase
+    .from('products')
+    .select('id, name, sku, barcode')
+    .in('id', productIds);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const meta = { queried: 0, suggested: 0, skipped_has_barcode: 0, failed: 0 };
+  const results = [];
+  const DELAY_MS = 300; // throttle between external API calls
+
+  for (const product of products ?? []) {
+    meta.queried++;
+
+    // Skip products that already have a valid EAN
+    if (product.barcode) {
+      const norm = normaliseBarcode(product.barcode);
+      if (validateEAN13(norm)) {
+        meta.skipped_has_barcode++;
+        results.push({ product_id: product.id, name: product.name, sku: product.sku, current_barcode: product.barcode, suggestions: [], status: 'skipped_has_ean' });
+        continue;
+      }
+    }
+
+    try {
+      const suggestions = await fetchEANSuggestionsThrottled(product.name);
+      if (suggestions.length > 0) meta.suggested++;
+      else meta.failed++;
+      results.push({ product_id: product.id, name: product.name, sku: product.sku, current_barcode: product.barcode ?? null, suggestions, status: suggestions.length > 0 ? 'found' : 'not_found' });
+    } catch (err: unknown) {
+      meta.failed++;
+      const msg = err instanceof Error ? err.message : 'Error';
+      results.push({ product_id: product.id, name: product.name, sku: product.sku, current_barcode: product.barcode ?? null, suggestions: [], status: 'error', error: msg });
+    }
+
+    // Throttle between requests to avoid hammering the external API
+    await new Promise(r => setTimeout(r, DELAY_MS));
+  }
+
+  console.log(`[EAN/bulk-suggest] meta=${JSON.stringify(meta)}`);
+
+  return NextResponse.json({ results, meta });
+}
+
+async function fetchEANSuggestionsThrottled(name: string): Promise<Array<{ ean: string; label: string; confidence: string }>> {
+  const TIMEOUT_MS = 8_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const body = await request.json().catch(() => ({}));
-    const limit = Math.min(100, Math.max(1, Number(body?.limit) || 30));
-    const onlyWithoutBarcode = body?.only_without_barcode !== false;
-
-    const supabase = createAdminClient();
-    let query = supabase
-      .from('products')
-      .select('id,name,brand,sku,barcode')
-      .order('updated_at', { ascending: false })
-      .limit(limit);
-
-    if (onlyWithoutBarcode) {
-      query = query.or('barcode.is.null,barcode.eq.');
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const products = data || [];
-    const suggestions: Array<{
-      productId: string;
-      productName: string;
-      currentBarcode: string | null;
-      suggestedEan: string;
-      confidence: Confidence;
-      score: number;
-      source: string;
-      referenceName?: string;
-    }> = [];
-
-    for (const p of products) {
-      if (p.barcode && String(p.barcode).trim() !== '') continue;
-
-      const best = await searchBestEan(p.name || '', p.brand || null);
-      if (!best) continue;
-
-      suggestions.push({
-        productId: p.id,
-        productName: p.name || '',
-        currentBarcode: p.barcode,
-        suggestedEan: best.ean,
-        confidence: best.confidence,
-        score: best.score,
-        source: best.source,
-        referenceName: best.product_name,
-      });
-    }
-
-    return NextResponse.json({ suggestions, total: suggestions.length });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Error sugiriendo EAN en lote' },
-      { status: 500 }
-    );
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(name)}&search_simple=1&action=process&json=1&page_size=5`;
+    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'TenuteWeb/1.0' } });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`OpenFoodFacts returned ${res.status}`);
+    const json = await res.json();
+    const products: Array<{ code?: string; product_name?: string }> = json?.products ?? [];
+    const seen = new Set<string>();
+    return products
+      .filter(p => {
+        const code = normaliseBarcode(p.code ?? '');
+        if (!validateEAN13(code) || seen.has(code)) return false;
+        seen.add(code);
+        return true;
+      })
+      .map(p => ({
+        ean: normaliseBarcode(p.code!),
+        label: p.product_name ?? 'Sin nombre',
+        confidence: (p.product_name?.toLowerCase().includes(name.toLowerCase().slice(0, 5)) ? 'high' : 'low'),
+      }));
+  } catch {
+    clearTimeout(timer);
+    return [];
   }
 }
