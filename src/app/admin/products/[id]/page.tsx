@@ -93,6 +93,7 @@ export default function ProductEditorPage() {
             format: data.format || '',
             content_info: data.content_info || '',
             cost_price: data.cost_price || 0,
+                          barcode: data.barcode || '',
             is_featured: data.is_featured || false,
             is_offer: data.is_offer || false,
             is_auction: data.is_auction || false,
@@ -162,6 +163,7 @@ export default function ProductEditorPage() {
       format: product.format || null,
       content_info: product.content_info || null,
       cost_price: Number(product.cost_price) || null,
+            barcode: product.barcode || null,
       is_featured: product.is_featured,
       is_offer: product.is_offer,
       is_auction: product.is_auction,
@@ -491,6 +493,16 @@ export default function ProductEditorPage() {
               type="text"
               value={product.sku}
               onChange={(e) => handleChange('sku', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+                    <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Codigo de barras</label>
+            <input
+              type="text"
+              value={product.barcode}
+              onChange={(e) => handleChange('barcode', e.target.value)}
+              placeholder="EAN-13, UPC, etc."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

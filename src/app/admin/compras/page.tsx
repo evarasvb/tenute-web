@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Image from 'next/image';
 
 interface Product {
@@ -30,6 +30,11 @@ export default function ComprasPage() {
   const [productSearch, setProductSearch] = useState('');
   const [supplierName, setSupplierName] = useState('');
   const [supplierRut, setSupplierRut] = useState('');
+      const [proveedorResults, setProveedorResults] = useState<{id:string;nombre:string;rut:string}[]>([]);
+      const [showProveedorDropdown, setShowProveedorDropdown] = useState(false);
+    const [scannerActive, setScannerActive] = useState(false);
+    const [barcodeInput, setBarcodeInput] = useState('');
+    const barcodeInputRef = useRef<HTMLInputElement>(null);
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -47,14 +52,31 @@ export default function ComprasPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const filteredProducts = products.filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku||'').toLowerCase().includes(productSearch.toLowerCase())).slice(0, 8);
+    // Buscar proveedores cuando se escribe el nombre del proveedor
+    useEffect(() => {
+          if (supplierName.length < 2) { setProveedorResults([]); setShowProveedorDropdown(false); return; }
+          const timer = setTimeout(async () => {
+                  try {
+                            const res = await fetch(`/api/admin/proveedores?search=${supplierName}`);
+                            const data = await res.json();
+                            setProveedorResults((data.proveedores || []).map((p: {id:string;nombre:string;rut:string|null}) => ({ id: p.id, nombre: p.nombre, rut: p.rut || '' })));
+                            setShowProveedorDropdown(true);
+                          } catch {} }, 300);
+          return () => clearTimeout(timer);
+        }, [supplierName]);
+
+  const filteredProducts = products.filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku||'').toLowerCase().includes(productSearch.toLowerCase() || (p.barcode||'').toLowerCase().includes(productSearch.toLowerCase()))).slice(0, 8);
   const totalAmount = items.reduce((s, i) => s + i.quantity * i.unit_cost, 0);
 
   const resetForm = () => {
-    setSupplierName(''); setSupplierRut(''); setInvoiceNumber('');
+    setSupplierName(''); setSupplierRut(''); setInvoiceNumber(''); setProveedorResults([]); setShowProveedorDropdown(false); setScannerActive(false); setBarcodeInput('');
     setPurchaseDate(new Date().toISOString().split('T')[0]);
     setNotes(''); setItems([{ ...EMPTY }]); setShowForm(false);
   };
+
+    function handleBarcodeScan(code: string) { if (!code.trim()) return; const found = products.find((p: Product) => p.barcode === code || p.sku === code); if (found) { const ei = items.findIndex(i => !i.product_id); const newItem = { product_id: found.id, product_name: found.name, product_sku: found.sku||'', quantity: 1, unit_cost: found.cost_price||0, warehouse: 'ocoa' as const }; if (ei >= 0) { setItems(prev => prev.map((item,i) => i===ei ? newItem : item)); } else { setItems(prev => [...prev, newItem]); } setSuccess(`Producto agregado: ${found.name}`); setTimeout(() => setSuccess(''), 3000); } else { setError(`No se encontro producto con codigo: ${code}`); setTimeout(() => setError(''), 3000); } setBarcodeInput(''); }
+
+    function toggleScanner() { setScannerActive(!scannerActive); if (!scannerActive) { setTimeout(() => barcodeInputRef.current?.focus(), 100); } }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +116,10 @@ export default function ComprasPage() {
           <h3 className="font-semibold text-gray-900 text-lg">Registrar Nueva Compra</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div><label className="block text-xs font-medium text-gray-600 mb-1">Proveedor *</label>
-              <input value={supplierName} onChange={e => setSupplierName(e.target.value)} placeholder="Nombre del proveedor" required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
+                            <div className="relative">
+              <input value={supplierName} onChange={e => setSupplierName(e.target.value)} onFocus={() => supplierName.length >= 2 && setShowProveedorDropdown(true)} onBlur={() => setTimeout(() => setShowProveedorDropdown(false), 200)} autoComplete="off" placeholder="Nombre del proveedor" required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                                            {showProveedorDropdown && proveedorResults.length > 0 && (<div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">{proveedorResults.map(p => (<button key={p.id} type="button" onMouseDown={(e) => { e.preventDefault(); setSupplierName(p.nombre); setSupplierRut(p.rut); setShowProveedorDropdown(false); setProveedorResults([]); }} className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-0"><span className="font-medium">{p.nombre}</span>{p.rut && <span className="ml-2 text-gray-400 text-xs">{p.rut}</span>}</button>))}</div>)}
+                                            </div></div>
             <div><label className="block text-xs font-medium text-gray-600 mb-1">RUT</label>
               <input value={supplierRut} onChange={e => setSupplierRut(e.target.value)} placeholder="12.345.678-9" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"/></div>
             <div><label className="block text-xs font-medium text-gray-600 mb-1">N Factura</label>
@@ -108,7 +133,7 @@ export default function ComprasPage() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h4 className="font-medium text-gray-800 text-sm">Productos</h4>
+              <h4 className="font-medium text-gray-800 text-sm">Productos</h4><button type="button" onClick={toggleScanner} className={`px-3 py-1 text-xs rounded-lg ${scannerActive?'bg-red-600 text-white':'bg-blue-600 text-white'}`}>{scannerActive?'Detener':'Escanear Código'}</button>
               <div className="relative">
                 <input value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="Buscar producto..." className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"/>
                 {productSearch && filteredProducts.length > 0 && (

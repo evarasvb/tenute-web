@@ -50,65 +50,71 @@ export interface Product {
   updated_at?: string;
 }
 
-export interface Customer {
+export interface Proveedor {
   id: string;
-  email: string;
-  name: string;
-  phone?: string;
-  address?: string;
-  is_wholesale: boolean;
-  created_at: string;
-}
-
-export type OrderStatus = 'pending' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled';
-export type ShippingMethod = 'pickup' | 'local_delivery' | 'starken';
-export type PaymentMethod = 'mercadopago' | 'transfer' | 'whatsapp' | 'flow';
-
-export interface Order {
-  id: string;
-  order_number: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_email?: string;
-  customer_rut?: string;
-  shipping_address?: string;
-  shipping_commune?: string;
-  shipping_city?: string;
-  shipping_region?: string;
-  shipping_method: ShippingMethod;
-  shipping_cost: number;
-  subtotal: number;
-  total: number;
-  status: OrderStatus;
-  payment_method: PaymentMethod;
-  payment_id?: string;
-  mercadopago_preference_id?: string;
-  tracking_number?: string;
-  admin_notes?: string;
-  notes?: string;
+  nombre: string;
+  rut?: string;
+  contacto?: string;
+  telefono?: string;
+  email?: string;
+  direccion?: string;
+  condiciones_pago: string;
+  notas?: string;
+  activo: boolean;
   created_at: string;
   updated_at?: string;
-  items?: OrderItem[];
 }
+
+
+// ─────────────────────────────────────────────
+// Order types
+// ─────────────────────────────────────────────
+export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
 
 export interface OrderItem {
   id: string;
   order_id: string;
-  product_id: string;
+  product_id?: string;
   product_name: string;
   product_sku?: string;
   product_image_url?: string;
   quantity: number;
   unit_price: number;
-  subtotal: number;
-  created_at?: string;
+  total_price: number;
 }
+
+export interface Order {
+  id: string;
+  order_number: string;
+  customer_name: string;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_rut?: string;
+  shipping_address?: string;
+  shipping_commune?: string;
+  shipping_region?: string;
+  shipping_cost?: number;
+  subtotal: number;
+  discount?: number;
+  total: number;
+  status: OrderStatus;
+  payment_method?: string;
+  payment_status?: string;
+  notes?: string;
+  items?: OrderItem[];
+  created_at: string;
+  updated_at?: string;
+}
+
+// ─────────────────────────────────────────────
+// Shipping types
+// ─────────────────────────────────────────────
+export type ShippingZoneType = 'free' | 'local' | 'starken';
 
 export interface ShippingZone {
   id: string;
   commune_name: string;
-  zone_type: 'local' | 'starken';
+  zone_type: ShippingZoneType;
   delivery_cost: number;
-  estimated_days: string;
-  is_active: boolean;
+  estimated_days?: string;
 }

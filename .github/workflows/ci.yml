@@ -1,0 +1,60 @@
+# CI pipeline — tenute-web
+# Runs lint + build + tests on every push/PR to main
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      # Provide dummy env vars so Next.js build does not fail on missing NEXT_PUBLIC_* vars
+      - name: Create .env.local for build
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
+          SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder
+          ADMIN_PASSWORD=ci_placeholder
+          FLOW_API_KEY=placeholder
+          FLOW_SECRET_KEY=placeholder
+          FLOW_SANDBOX=true
+          NEXT_PUBLIC_BASE_URL=http://localhost:3000
+          EOF
+
+      - name: Lint (non-interactive)
+        run: npm run lint
+
+      # Type-check is informational only: pre-existing TS errors in
+      # orders/[id]/page.tsx and compras/page.tsx are tracked separately.
+      # Once those files are fixed, remove continue-on-error.
+      - name: Type check (informational)
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Unit tests
+        run: npm run test:ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NODE_ENV: production

@@ -13,7 +13,7 @@ interface Product {
   stock_local21: number;
   stock_ocoa: number;
   sku: string | null;
-  barcode?: string | null;
+  barcode: string | null;
 }
 
 interface SaleItem {
@@ -74,10 +74,12 @@ export default function VentasPage() {
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [scanCount, setScanCount] = useState(0);
+  const [scannerActive, setScannerActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanLoopRef = useRef<number | null>(null);
   const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/admin/products?limit=500');
@@ -241,6 +243,27 @@ export default function VentasPage() {
   }, [handleBarcodeLookup, stopScanner]);
 
   useEffect(() => () => stopScanner(), [stopScanner]);
+
+    function handleBarcodeScan(code: string) {
+    if (!code.trim()) return;
+    const found = products.find((p: Product) => p.barcode === code || p.sku === code);
+    if (found) {
+      addProduct(found);
+      setSuccess(`Producto agregado por scanner: ${found.name}`);
+      setTimeout(() => setSuccess(''), 3000);
+    } else {
+      setError(`No se encontró producto con código: ${code}`);
+      setTimeout(() => setError(''), 3000);
+    }
+    setBarcodeInput('');
+  }
+
+  function toggleScanner() {
+    setScannerActive(!scannerActive);
+    if (!scannerActive) {
+      setTimeout(() => barcodeInputRef.current?.focus(), 100);
+    }
+  }
 
   function updateItem(index: number, field: keyof SaleItem, value: string | number) {
     setItems(prev => prev.map((item, i) => {
@@ -428,6 +451,25 @@ export default function VentasPage() {
               placeholder="Buscar producto por nombre, SKU o barcode..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+                        <button type="button" onClick={toggleScanner} className={`mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${scannerActive ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+              {scannerActive ? 'Desactivar scanner' : 'Usar scanner'}
+            </button>
+            {scannerActive && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-600 mb-2">Scanner activo — escanea con lector USB/Bluetooth o ingresa el código manualmente</p>
+                <input
+                  ref={barcodeInputRef}
+                  type="text"
+                  value={barcodeInput}
+                  onChange={e => setBarcodeInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleBarcodeScan(barcodeInput); } }}
+                  placeholder="Esperando código de barras..."
+                  className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  autoFocus
+                />
+              </div>
+            )}
             {productResults.length > 0 && (
               <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
                 {productResults.map(p => (
