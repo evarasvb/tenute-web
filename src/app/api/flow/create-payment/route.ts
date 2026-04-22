@@ -15,12 +15,13 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin;
+    const billingEmail = process.env.TENUTE_BILLING_EMAIL || 'tenute@gmail.com';
 
     const result = await createFlowPayment({
       commerceOrder: orderNumber,
       subject: `Pedido Tenute ${orderNumber}`,
       amount: Math.round(amount),
-      email: email || 'cliente@tenute.cl',
+      email: email || billingEmail,
       urlConfirmation: `${baseUrl}/api/flow/confirm`,
       urlReturn: `${baseUrl}/api/flow/result`,
     });

@@ -69,12 +69,12 @@ export default function VentasPage() {
 
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<Product[]>([]);
+  const [scannerActive, setScannerActive] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [scanCount, setScanCount] = useState(0);
-  const [scannerActive, setScannerActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanLoopRef = useRef<number | null>(null);
@@ -84,7 +84,7 @@ export default function VentasPage() {
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/admin/products?limit=500');
     const data = await res.json();
-    setProducts(data.products || []);
+    setProducts(data.data || data.products || []);
   }, []);
 
   const fetchSales = useCallback(async () => {
@@ -102,7 +102,7 @@ export default function VentasPage() {
 
   useEffect(() => {
     if (!productSearch.trim()) { setProductResults([]); return; }
-    const q = productSearch.toLowerCase();
+    const q = productSearch.trim().toLowerCase();
     setProductResults(
       products.filter(p =>
         p.name.toLowerCase().includes(q) ||
@@ -244,18 +244,17 @@ export default function VentasPage() {
 
   useEffect(() => () => stopScanner(), [stopScanner]);
 
-    function handleBarcodeScan(code: string) {
-    if (!code.trim()) return;
-    const found = products.find((p: Product) => p.barcode === code || p.sku === code);
-    if (found) {
-      addProduct(found);
-      setSuccess(`Producto agregado por scanner: ${found.name}`);
-      setTimeout(() => setSuccess(''), 3000);
-    } else {
-      setError(`No se encontró producto con código: ${code}`);
-      setTimeout(() => setError(''), 3000);
-    }
-    setBarcodeInput('');
+  function findProductByCode(rawCode: string) {
+    const code = rawCode.trim().toLowerCase();
+    if (!code) return null;
+    return products.find((p: Product) =>
+      (p.barcode || '').trim().toLowerCase() === code ||
+      (p.sku || '').trim().toLowerCase() === code
+    ) || null;
+  }
+
+  function handleBarcodeScan(code: string) {
+    handleBarcodeLookup(code);
   }
 
   function toggleScanner() {
@@ -448,7 +447,19 @@ export default function VentasPage() {
               type="text"
               value={productSearch}
               onChange={e => setProductSearch(e.target.value)}
-              placeholder="Buscar producto por nombre, SKU o barcode..."
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const foundByCode = findProductByCode(productSearch);
+                if (foundByCode) {
+                  addProduct(foundByCode);
+                  return;
+                }
+                if (productResults.length > 0) {
+                  addProduct(productResults[0]);
+                }
+              }}
+              placeholder="Buscar por nombre, SKU o código de barras..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
                         <button type="button" onClick={toggleScanner} className={`mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${scannerActive ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}>

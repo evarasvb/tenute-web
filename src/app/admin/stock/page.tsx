@@ -39,7 +39,7 @@ export default function StockPage() {
     try {
       const resp = await fetch('/api/admin/products?limit=9999&page=1');
       const data = await resp.json();
-      setProducts(data.products || []);
+      setProducts(data.data || data.products || []);
     } catch {
       setErrorMsg('Error cargando productos');
     } finally {

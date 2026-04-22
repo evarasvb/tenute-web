@@ -7,6 +7,7 @@ function checkAuth(req: NextRequest) {
 
 const IG_ACCESS_TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN;
 const IG_USER_ID = process.env.INSTAGRAM_USER_ID;
+const IG_ACCOUNT_LINK = process.env.INSTAGRAM_PROFILE_URL || 'https://instagram.com/tenute.cl';
 
 export async function POST(request: NextRequest) {
   if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     configured,
     userId: configured ? IG_USER_ID : null,
+    accountLink: IG_ACCOUNT_LINK,
     instructions: configured ? null : {
       steps: [
         '1. Ve a developers.facebook.com y crea una app Business',

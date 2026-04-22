@@ -59,9 +59,26 @@ export default function ProductEditorPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [publishingIG, setPublishingIG] = useState(false);
   const [igResult, setIgResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [igConfigured, setIgConfigured] = useState<boolean | null>(null);
+  const [suggestingEan, setSuggestingEan] = useState(false);
+  const [eanSuggestions, setEanSuggestions] = useState<Array<{
+    ean: string;
+    product_name: string;
+    brand: string;
+    source: string;
+    confidence: 'high' | 'medium' | 'low';
+    score: number;
+  }>>([]);
 
   useEffect(() => {
     fetch('/api/admin/categories').then(r => r.json()).then(setCategories);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/instagram')
+      .then(r => r.json())
+      .then((data) => setIgConfigured(Boolean(data.configured)))
+      .catch(() => setIgConfigured(false));
   }, []);
 
   useEffect(() => {
@@ -93,7 +110,6 @@ export default function ProductEditorPage() {
             format: data.format || '',
             content_info: data.content_info || '',
             cost_price: data.cost_price || 0,
-                          barcode: data.barcode || '',
             is_featured: data.is_featured || false,
             is_offer: data.is_offer || false,
             is_auction: data.is_auction || false,
@@ -163,7 +179,6 @@ export default function ProductEditorPage() {
       format: product.format || null,
       content_info: product.content_info || null,
       cost_price: Number(product.cost_price) || null,
-            barcode: product.barcode || null,
       is_featured: product.is_featured,
       is_offer: product.is_offer,
       is_auction: product.is_auction,
@@ -258,6 +273,37 @@ export default function ProductEditorPage() {
     setPublishingIG(false);
   }
 
+  async function handleSuggestEan() {
+    setSuggestingEan(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch('/api/admin/ean/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: product.name,
+          brand: product.brand,
+          format: product.format,
+          content_info: product.content_info,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'No fue posible sugerir EAN');
+        setEanSuggestions([]);
+      } else {
+        setEanSuggestions(data.suggestions || []);
+        if (!data.suggestions?.length) {
+          setSuccess('No se encontraron EAN confiables para este producto');
+        }
+      }
+    } catch {
+      setError('Error de conexión al buscar EAN');
+    }
+    setSuggestingEan(false);
+  }
+
   async function handleDelete() {
     const res = await fetch(`/api/admin/products/${id}`, { method: 'DELETE' });
     if (res.ok) {
@@ -344,7 +390,7 @@ export default function ProductEditorPage() {
             {product.image_url && (
               <button
                 onClick={handlePublishInstagram}
-                disabled={publishingIG}
+                disabled={publishingIG || igConfigured === false}
                 title="Publicar en Instagram"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-xs font-medium hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all"
               >
@@ -375,6 +421,11 @@ export default function ProductEditorPage() {
       {igResult?.error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
           Instagram: {igResult.error}
+        </div>
+      )}
+      {igConfigured === false && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
+          Instagram no configurado. Debes definir INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID.
         </div>
       )}
 
@@ -505,6 +556,43 @@ export default function ProductEditorPage() {
               placeholder="EAN-13, UPC, etc."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSuggestEan}
+                disabled={suggestingEan || !product.name.trim()}
+                className="px-3 py-1.5 text-xs bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 disabled:opacity-50"
+              >
+                {suggestingEan ? 'Buscando EAN...' : 'Sugerir EAN desde internet'}
+              </button>
+              <span className="text-[11px] text-gray-400">Busca por nombre/marca y sugiere códigos con nivel de confianza.</span>
+            </div>
+            {eanSuggestions.length > 0 && (
+              <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 p-2 space-y-1">
+                {eanSuggestions.map((s) => (
+                  <button
+                    key={s.ean}
+                    type="button"
+                    onClick={() => handleChange('barcode', s.ean)}
+                    className="w-full text-left px-2 py-1.5 rounded hover:bg-white border border-transparent hover:border-gray-200"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono text-gray-900">{s.ean}</span>
+                      <span className={`px-2 py-0.5 rounded-full ${
+                        s.confidence === 'high' ? 'bg-green-100 text-green-700' :
+                        s.confidence === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {s.confidence} ({s.score})
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-500 truncate">
+                      {s.product_name} {s.brand ? `· ${s.brand}` : ''} · {s.source}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>

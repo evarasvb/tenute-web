@@ -65,7 +65,17 @@ export default function ComprasPage() {
           return () => clearTimeout(timer);
         }, [supplierName]);
 
-  const filteredProducts = products.filter(p => !productSearch || p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.sku||'').toLowerCase().includes(productSearch.toLowerCase() || (p.barcode||'').toLowerCase().includes(productSearch.toLowerCase()))).slice(0, 8);
+  const filteredProducts = products
+    .filter((p) => {
+      if (!productSearch) return true;
+      const q = productSearch.toLowerCase();
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.barcode || '').toLowerCase().includes(q)
+      );
+    })
+    .slice(0, 8);
   const totalAmount = items.reduce((s, i) => s + i.quantity * i.unit_cost, 0);
 
   const resetForm = () => {

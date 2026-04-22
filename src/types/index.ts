@@ -26,6 +26,7 @@ export interface Product {
   stock: number;
   stock_ocoa?: number;
   stock_local21?: number;
+  stock_local?: number;
   condition: string;
   image_url?: string;
   images?: string[];
@@ -65,45 +66,58 @@ export interface Proveedor {
   updated_at?: string;
 }
 
-
 // ─────────────────────────────────────────────
 // Order types
 // ─────────────────────────────────────────────
-export type OrderStatus = 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
+export type OrderStatus =
+  | 'pending'
+  | 'paid'
+  | 'preparing'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'refunded';
 
 export interface OrderItem {
   id: string;
   order_id: string;
-  product_id?: string;
+  product_id?: string | null;
   product_name: string;
-  product_sku?: string;
-  product_image_url?: string;
+  product_sku?: string | null;
+  product_image_url?: string | null;
   quantity: number;
   unit_price: number;
-  total_price: number;
+  subtotal: number;
+  total_price?: number;
 }
 
 export interface Order {
   id: string;
   order_number: string;
   customer_name: string;
-  customer_email?: string;
-  customer_phone?: string;
-  customer_rut?: string;
-  shipping_address?: string;
-  shipping_commune?: string;
-  shipping_region?: string;
+  customer_phone?: string | null;
+  customer_email?: string | null;
+  customer_rut?: string | null;
+  shipping_method?: 'pickup' | 'local_delivery' | 'starken' | string;
+  shipping_address?: string | null;
+  shipping_commune?: string | null;
+  shipping_city?: string | null;
+  shipping_region?: string | null;
   shipping_cost?: number;
+  payment_method?: string | null;
+  payment_id?: string | null;
+  payment_status?: string;
+  status: OrderStatus | string;
   subtotal: number;
   discount?: number;
   total: number;
-  status: OrderStatus;
-  payment_method?: string;
-  payment_status?: string;
-  notes?: string;
-  items?: OrderItem[];
+  tracking_number?: string | null;
+  notes?: string | null;
+  admin_notes?: string | null;
   created_at: string;
   updated_at?: string;
+  items?: OrderItem[];
 }
 
 // ─────────────────────────────────────────────
@@ -113,8 +127,12 @@ export type ShippingZoneType = 'free' | 'local' | 'starken';
 
 export interface ShippingZone {
   id: string;
-  commune_name: string;
   zone_type: ShippingZoneType;
+  commune_name: string;
   delivery_cost: number;
   estimated_days?: string;
+  description?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
