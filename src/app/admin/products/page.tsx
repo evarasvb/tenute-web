@@ -2,16 +2,28 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
+
+interface EanSuggestion {
+  productId: string;
+  productName: string;
+  currentBarcode: string | null;
+  suggestedEan: string;
+  confidence: 'alta' | 'media' | 'baja';
+  score: number;
+  source: string;
+}
 
 interface Product {
   id: string;
   name: string;
   sku: string;
+  barcode: string | null;
   price: number;
   cost_price: number;
   stock: number;
   stock_ocoa: number;
-  stock_local: number;
+  stock_local21: number;
   brand: string;
   image_url: string;
   category_id: string;
@@ -62,6 +74,12 @@ export default function AdminProductsPage() {
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ inserted: number; errors: string[] } | null>(null);
+  const [showEanBulk, setShowEanBulk] = useState(false);
+  const [eanBulkLoading, setEanBulkLoading] = useState(false);
+  const [eanSuggestions, setEanSuggestions] = useState<EanSuggestion[]>([]);
+  const [eanApplyingId, setEanApplyingId] = useState<string | null>(null);
+  const [eanApplyingBulk, setEanApplyingBulk] = useState(false);
+  const [eanBulkMessage, setEanBulkMessage] = useState('');
   const importFileRef = useRef<HTMLInputElement>(null);
   const limit = 50;
   const hasCostMarginFilter = !!(costMin || costMax || marginMin || marginMax);
@@ -194,6 +212,78 @@ export default function AdminProductsPage() {
     if (importFileRef.current) importFileRef.current.value = '';
   }
 
+  async function loadBulkEanSuggestions() {
+    setEanBulkLoading(true);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch('/api/admin/ean/bulk-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 100, only_without_barcode: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo sugerir EAN');
+      setEanSuggestions(data.suggestions || []);
+      setEanBulkMessage(`Sugerencias encontradas: ${data.suggestions?.length || 0}`);
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error cargando sugerencias EAN');
+    } finally {
+      setEanBulkLoading(false);
+    }
+  }
+
+  async function applyEanSuggestion(s: EanSuggestion) {
+    setEanApplyingId(s.productId);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch(`/api/admin/products/${s.productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: s.suggestedEan }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo aplicar EAN');
+      setEanSuggestions(prev => prev.filter(item => item.productId !== s.productId));
+      setEanBulkMessage(`EAN aplicado en ${s.productName}`);
+      fetchProducts();
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error aplicando EAN');
+    } finally {
+      setEanApplyingId(null);
+    }
+  }
+
+  async function applyHighConfidenceBulk() {
+    const rows = eanSuggestions
+      .filter((s) => s.confidence === 'alta')
+      .map((s) => ({ productId: s.productId, ean: s.suggestedEan }));
+    if (rows.length === 0) {
+      setEanBulkMessage('No hay sugerencias de confianza alta para aplicar');
+      return;
+    }
+
+    setEanApplyingBulk(true);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch('/api/admin/ean/bulk-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error aplicando EAN masivo');
+
+      const appliedIds = new Set<string>((data.applied || []).map((r: { productId: string }) => r.productId));
+      setEanSuggestions((prev) => prev.filter((s) => !appliedIds.has(s.productId)));
+      setEanBulkMessage(`Aplicados ${data.appliedCount || 0} EAN de confianza alta`);
+      fetchProducts();
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error aplicando en lote');
+    } finally {
+      setEanApplyingBulk(false);
+    }
+  }
+
   function clearAll() {
     setSearch(''); setCategory(''); setBrand(''); setHasImage('');
     setActiveFilter(''); setCostMin(''); setCostMax(''); setMarginMin(''); setMarginMax(''); setPage(1);
@@ -227,6 +317,9 @@ export default function AdminProductsPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" /></svg>
             Importar
           </button>
+          <button onClick={() => { setShowEanBulk(true); loadBulkEanSuggestions(); }} className="inline-flex items-center gap-2 px-4 py-2 border border-indigo-300 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors">
+            Sugerir EAN masivo
+          </button>
           <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-2 px-4 py-2 border border-green-600 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             {exporting ? 'Exportando...' : 'Excel'}
@@ -247,7 +340,7 @@ export default function AdminProductsPage() {
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <input type="text" placeholder="Buscar nombre o SKU..." value={search}
+          <input type="text" placeholder="Buscar nombre, SKU o codigo de barras..." value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <select value={category} onChange={e => { setCategory(e.target.value); setPage(1); }}
@@ -305,6 +398,7 @@ export default function AdminProductsPage() {
                 <th className="px-3 py-3 text-left font-medium text-gray-500 w-10">Img</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('name')}>Nombre <SortIcon col="name" /></th>
                 <th className="px-3 py-3 text-left font-medium text-gray-500 hidden md:table-cell">SKU</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-500 hidden lg:table-cell">Barcode</th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('price')}>Precio <SortIcon col="price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell cursor-pointer" onClick={() => handleSort('cost_price')}>Costo <SortIcon col="cost_price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Margen</th>
@@ -319,24 +413,34 @@ export default function AdminProductsPage() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100 animate-pulse">
-                    {Array.from({ length: 11 }).map((__, j) => (
+                    {Array.from({ length: 12 }).map((__, j) => (
                       <td key={j} className="px-3 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : products.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
+                <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
               ) : (
                 products.map(p => {
                   const margin = calcMargin(p.price, p.cost_price);
-                  const totalStock = (p.stock_ocoa || 0) + (p.stock_local || 0) || p.stock || 0;
+                  const totalStock = (p.stock_ocoa || 0) + (p.stock_local21 || 0) || p.stock || 0;
                   return (
                     <tr key={p.id} className={'border-b border-gray-100 hover:bg-gray-50 transition-colors' + (!p.active ? ' opacity-50' : '')}>
                       <td className="px-3 py-2">
-                        {p.image_url ? <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" /> : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
+                        {p.image_url ? (
+                          <Image
+                            src={p.image_url}
+                            alt=""
+                            width={32}
+                            height={32}
+                            unoptimized
+                            className="w-8 h-8 rounded object-cover"
+                          />
+                        ) : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-900 max-w-[180px] truncate">{p.name}</td>
                       <td className="px-3 py-2 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || '-'}</td>
+                      <td className="px-3 py-2 text-gray-500 hidden lg:table-cell font-mono text-xs">{p.barcode || '-'}</td>
                       <td className="px-3 py-2 text-right font-medium">{formatCLP(p.price)}</td>
                       <td className="px-3 py-2 text-right text-gray-500 hidden lg:table-cell">{p.cost_price ? formatCLP(p.cost_price) : <span className="text-gray-300">â</span>}</td>
                       <td className={'px-3 py-2 text-right hidden lg:table-cell ' + marginColor(margin)}>
@@ -346,7 +450,7 @@ export default function AdminProductsPage() {
                         <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">{p.stock_ocoa || 0}</span>
                       </td>
                       <td className="px-3 py-2 text-center hidden xl:table-cell">
-                        <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">{p.stock_local || 0}</span>
+                        <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">{p.stock_local21 || 0}</span>
                       </td>
                       <td className="px-3 py-2 text-right">
                         <span className={totalStock <= 0 ? 'text-red-600 font-bold' : totalStock < 5 ? 'text-orange-500 font-semibold' : 'text-gray-700'}>
@@ -411,7 +515,7 @@ export default function AdminProductsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full">
             <h3 className="text-lg font-semibold mb-1">Importar productos masivamente</h3>
-            <p className="text-xs text-gray-400 mb-4">Columnas: <span className="font-mono bg-gray-100 px-1 rounded">name, sku, price, cost_price, stock_ocoa, stock_local, brand, description, image_url, active</span></p>
+            <p className="text-xs text-gray-400 mb-4">Columnas: <span className="font-mono bg-gray-100 px-1 rounded">name, sku, barcode, price, cost_price, stock_ocoa, stock_local21, brand, description, image_url, active</span></p>
             <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
               <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
               <span className="text-sm font-medium text-gray-600">{importing ? 'Importando...' : 'Seleccionar archivo Excel o CSV'}</span>
@@ -426,6 +530,67 @@ export default function AdminProductsPage() {
             <div className="flex items-center justify-between mt-4">
               <a href="/api/admin/products/import" className="text-sm text-blue-600 hover:underline">Descargar plantilla</a>
               <button onClick={() => { setShowImport(false); setImportResult(null); }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showEanBulk && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-4xl w-full max-h-[85vh] overflow-auto">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <h3 className="text-lg font-semibold">Sugerencia masiva de EAN</h3>
+                <p className="text-xs text-gray-500">Solo productos sin código de barras. Revisa y aplica por confianza.</p>
+              </div>
+              <button onClick={() => setShowEanBulk(false)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cerrar</button>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <button onClick={loadBulkEanSuggestions} disabled={eanBulkLoading} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">
+                {eanBulkLoading ? 'Buscando...' : 'Refrescar sugerencias'}
+              </button>
+              <button onClick={applyHighConfidenceBulk} disabled={eanApplyingBulk || eanSuggestions.length === 0} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                {eanApplyingBulk ? 'Aplicando...' : 'Aplicar todas (alta)'}
+              </button>
+              {eanBulkMessage && <span className="text-sm text-gray-600">{eanBulkMessage}</span>}
+            </div>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Producto</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">EAN sugerido</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Confianza</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Fuente</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eanSuggestions.length === 0 && !eanBulkLoading ? (
+                    <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Sin sugerencias por ahora</td></tr>
+                  ) : (
+                    eanSuggestions.map((s) => (
+                      <tr key={s.productId} className="border-b border-gray-100">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-gray-800">{s.productName}</p>
+                          {s.currentBarcode && <p className="text-xs text-gray-400">Actual: {s.currentBarcode}</p>}
+                        </td>
+                        <td className="px-3 py-2 font-mono">{s.suggestedEan}</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.confidence === 'alta' ? 'bg-green-100 text-green-700' : s.confidence === 'media' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {s.confidence} ({s.score})
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{s.source}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button onClick={() => applyEanSuggestion(s)} disabled={eanApplyingId === s.productId} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50">
+                            {eanApplyingId === s.productId ? 'Aplicando...' : 'Aplicar EAN'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

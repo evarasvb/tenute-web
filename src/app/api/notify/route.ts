@@ -18,7 +18,8 @@ function buildOrderWhatsAppMessage(order: Order & { items?: OrderItem[] }): stri
   if (order.customer_email) msg += `📧 *Email:* ${order.customer_email}\n`;
   if (order.customer_rut) msg += `🪪 *RUT:* ${order.customer_rut}\n`;
 
-  msg += `\n📦 *Envío:* ${SHIPPING_METHOD_LABELS[order.shipping_method] || order.shipping_method}\n`;
+  const shippingMethod = order.shipping_method || 'pickup';
+  msg += `\n📦 *Envío:* ${SHIPPING_METHOD_LABELS[shippingMethod] || shippingMethod}\n`;
   if (order.shipping_address) {
     msg += `📍 *Dirección:* ${order.shipping_address}`;
     if (order.shipping_commune) msg += `, ${order.shipping_commune}`;
@@ -35,10 +36,11 @@ function buildOrderWhatsAppMessage(order: Order & { items?: OrderItem[] }): stri
   }
 
   msg += `\n💰 *Subtotal:* ${formatCLP(order.subtotal)}`;
+  const shippingCost = Number(order.shipping_cost || 0);
   if (order.shipping_method === 'starken') {
     msg += `\n🚚 *Envío:* Por cotizar`;
   } else {
-    msg += `\n🚚 *Envío:* ${order.shipping_cost > 0 ? formatCLP(order.shipping_cost) : 'Gratis'}`;
+    msg += `\n🚚 *Envío:* ${shippingCost > 0 ? formatCLP(shippingCost) : 'Gratis'}`;
   }
   msg += `\n*Total:* ${formatCLP(order.total)}`;
 
@@ -85,11 +87,15 @@ export async function POST(request: Request) {
       message = buildOrderWhatsAppMessage(order);
     }
 
+    const notificationEmail = process.env.TENUTE_NOTIFICATION_EMAIL || 'tenute@gmail.com';
+    const billingEmail = process.env.TENUTE_BILLING_EMAIL || 'tenute@gmail.com';
     const whatsappUrl = `https://wa.me/56987299147?text=${encodeURIComponent(message)}`;
 
     return NextResponse.json({
       message,
       whatsapp_url: whatsappUrl,
+      notification_email: notificationEmail,
+      billing_email: billingEmail,
     });
   } catch {
     return NextResponse.json(
