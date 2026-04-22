@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     // Status 2 = paid
     if (status.status === 2) {
       const supabase = createAdminClient();
+      const paymentId = status.flowOrder.toString();
 
       // Find order by order_number (commerceOrder)
       const { data: order } = await supabase
@@ -39,11 +40,22 @@ export async function POST(request: NextRequest) {
           .update({
             status: 'paid',
             payment_method: 'flow',
-            payment_id: status.flowOrder.toString(),
+            payment_id: paymentId,
             updated_at: new Date().toISOString(),
           })
           .eq('id', order.id);
       }
+
+      // If this Flow payment corresponds to raffle purchase, mark reservation as paid
+      await supabase
+        .from('raffle_number_reservations')
+        .update({
+          payment_status: 'paid',
+          payment_id: paymentId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('flow_token', token)
+        .eq('payment_status', 'pending');
     }
 
     return new Response('OK', { status: 200 });

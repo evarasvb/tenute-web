@@ -24,6 +24,19 @@ function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 }
 
+function formatCountdown(drawDate: string | null) {
+  if (!drawDate) return 'Fecha por confirmar';
+  const target = new Date(drawDate).getTime();
+  const now = Date.now();
+  const diff = target - now;
+  if (Number.isNaN(target)) return 'Fecha por confirmar';
+  if (diff <= 0) return 'Sorteo en curso o finalizado';
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const mins = Math.floor((diff / (1000 * 60)) % 60);
+  return `${days}d ${hours}h ${mins}m`;
+}
+
 export default function RifasPage() {
   const [raffles, setRaffles] = useState<PublicRaffle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,10 +164,14 @@ export default function RifasPage() {
                         </div>
                       )}
 
+                      <div className="mt-4 text-xs text-purple-700 font-semibold bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                        Cuenta regresiva: {formatCountdown(raffle.draw_date)}
+                      </div>
+
                       <div className="mt-5 flex items-center justify-between gap-3">
-                        <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
+                        <Link href={`/rifas/${raffle.slug}`} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
                           Comprar tu número
-                        </button>
+                        </Link>
                         <span className="text-xs text-gray-500">{raffle.social_hashtag || '#rifaTenute'}</span>
                       </div>
                     </div>

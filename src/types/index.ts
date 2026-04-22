@@ -154,3 +154,21 @@ export interface Raffle {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface RafflePurchase {
+  id: string;
+  raffle_id: string;
+  raffle_slug: string;
+  raffle_title: string;
+  raffle_number: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string | null;
+  amount: number;
+  status: 'pending' | 'paid' | 'cancelled';
+  payment_method: 'flow' | 'transfer' | 'whatsapp' | string;
+  payment_id?: string | null;
+  order_number: string;
+  created_at?: string;
+  updated_at?: string;
+}
