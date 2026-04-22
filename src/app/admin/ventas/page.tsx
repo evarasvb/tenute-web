@@ -75,7 +75,6 @@ export default function VentasPage() {
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [scanCount, setScanCount] = useState(0);
-  const [scannerActive, setScannerActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanLoopRef = useRef<number | null>(null);
@@ -255,17 +254,7 @@ export default function VentasPage() {
   }
 
   function handleBarcodeScan(code: string) {
-    if (!code.trim()) return;
-    const found = findProductByCode(code);
-    if (found) {
-      addProduct(found);
-      setSuccess(`Producto agregado por scanner: ${found.name}`);
-      setTimeout(() => setSuccess(''), 3000);
-    } else {
-      setError(`No se encontró producto con código: ${code}`);
-      setTimeout(() => setError(''), 3000);
-    }
-    setBarcodeInput('');
+    handleBarcodeLookup(code);
   }
 
   function toggleScanner() {

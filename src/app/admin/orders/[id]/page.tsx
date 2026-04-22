@@ -106,7 +106,7 @@ export default function AdminOrderDetailPage({
 
   function openWhatsApp(msg: string) {
     if (!order) return;
-    const phone = cleanPhone(order.customer_phone);
+    const phone = cleanPhone(order.customer_phone || '');
     window.open(
       `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,
       '_blank'
@@ -307,6 +307,7 @@ export default function AdminOrderDetailPage({
     color: 'text-gray-700',
     bg: 'bg-gray-100',
   };
+  const shippingCostValue = Number(order.shipping_cost || 0);
 
   return (
     <div className="max-w-4xl">
@@ -388,7 +389,7 @@ export default function AdminOrderDetailPage({
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Envío</h3>
             <p className="text-sm">
               <span className="text-gray-500">Método:</span>{' '}
-              {SHIPPING_LABELS[order.shipping_method] || order.shipping_method}
+              {SHIPPING_LABELS[order.shipping_method || ''] || order.shipping_method || 'No definido'}
             </p>
             {order.shipping_address && (
               <p className="text-sm">
@@ -401,11 +402,11 @@ export default function AdminOrderDetailPage({
             )}
             <p className="text-sm">
               <span className="text-gray-500">Costo envío:</span>{' '}
-              {order.shipping_cost > 0 ? formatCLP(order.shipping_cost) : 'Gratis'}
+              {shippingCostValue > 0 ? formatCLP(shippingCostValue) : 'Gratis'}
             </p>
             <p className="text-sm">
               <span className="text-gray-500">Pago:</span>{' '}
-              {PAYMENT_LABELS[order.payment_method] || order.payment_method}
+              {PAYMENT_LABELS[order.payment_method || ''] || order.payment_method || 'Sin definir'}
             </p>
             {order.tracking_number && (
               <p className="text-sm">
@@ -479,7 +480,7 @@ export default function AdminOrderDetailPage({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Envío</span>
-                <span>{order.shipping_cost > 0 ? formatCLP(order.shipping_cost) : 'Gratis'}</span>
+                <span>{shippingCostValue > 0 ? formatCLP(shippingCostValue) : 'Gratis'}</span>
               </div>
               <div className="flex justify-between font-bold text-base pt-1">
                 <span>Total</span>

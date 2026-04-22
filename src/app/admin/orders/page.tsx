@@ -200,8 +200,9 @@ export default function AdminOrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className="text-xs font-medium text-gray-600">
-                          {SHIPPING_LABELS[order.shipping_method] ||
-                            order.shipping_method}
+                          {(order.shipping_method
+                            ? SHIPPING_LABELS[order.shipping_method]
+                            : undefined) || order.shipping_method || '—'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">

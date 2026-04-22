@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
-import { validateEAN13, normaliseBarcode } from '@/app/api/admin/ean/suggest/route';
+import { validateEAN13 } from '@/lib/ean';
+
+function normaliseBarcode(raw: string): string {
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 12) return `0${digits}`;
+  return digits;
+}
 
 // Bulk-apply: assign EAN barcodes to multiple products
 // POST body: { assignments: Array<{ product_id: string; ean: string }> }

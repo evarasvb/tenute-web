@@ -1,5 +1,3 @@
-import { BarcodeDetectorPolyfill } from '@undecaf/barcode-detector-polyfill';
-
 type BarcodeDetectorLike = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue?: string }>>;
 };
@@ -24,8 +22,7 @@ export async function ensureBarcodeDetector(): Promise<BarcodeDetectorCtor> {
     }
   }
 
-  win.BarcodeDetector = BarcodeDetectorPolyfill as unknown as BarcodeDetectorCtor;
-  return win.BarcodeDetector;
+  throw new Error('BarcodeDetector no soportado en este navegador');
 }
 
 export async function createBarcodeDetector(): Promise<BarcodeDetectorLike> {

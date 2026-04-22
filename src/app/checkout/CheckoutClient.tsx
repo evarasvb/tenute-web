@@ -228,7 +228,7 @@ export default function CheckoutClient() {
       ...prev,
       commune: communeName,
       cost,
-      estimatedDays: zone.estimated_days,
+      estimatedDays: zone.estimated_days || '',
     }));
   }
 
@@ -239,7 +239,7 @@ export default function CheckoutClient() {
       ...prev,
       region: regionName,
       cost: rate.delivery_cost,
-      estimatedDays: rate.estimated_days,
+      estimatedDays: rate.estimated_days || '',
     }));
   }
 

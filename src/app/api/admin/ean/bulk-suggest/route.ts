@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
-import { validateEAN13, normaliseBarcode } from '@/app/api/admin/ean/suggest/route';
+import { validateEAN13, normalizeBarcodeDigits } from '@/lib/ean';
 
 // Bulk-suggest: find EAN suggestions for multiple products at once
 // POST body: { product_ids: string[] }
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     // Skip products that already have a valid EAN
     if (product.barcode) {
-      const norm = normaliseBarcode(product.barcode);
+      const norm = normalizeBarcodeDigits(product.barcode);
       if (validateEAN13(norm)) {
         meta.skipped_has_barcode++;
         results.push({ product_id: product.id, name: product.name, sku: product.sku, current_barcode: product.barcode, suggestions: [], status: 'skipped_has_ean' });
@@ -107,13 +107,13 @@ async function fetchEANSuggestionsThrottled(name: string): Promise<Array<{ ean: 
     const seen = new Set<string>();
     return products
       .filter(p => {
-        const code = normaliseBarcode(p.code ?? '');
+        const code = normalizeBarcodeDigits(p.code ?? '');
         if (!validateEAN13(code) || seen.has(code)) return false;
         seen.add(code);
         return true;
       })
       .map(p => ({
-        ean: normaliseBarcode(p.code!),
+        ean: normalizeBarcodeDigits(p.code!),
         label: p.product_name ?? 'Sin nombre',
         confidence: (p.product_name?.toLowerCase().includes(name.toLowerCase().slice(0, 5)) ? 'high' : 'low'),
       }));
