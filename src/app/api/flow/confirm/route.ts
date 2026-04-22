@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
       // If this Flow payment corresponds to raffle purchase, mark reservation as paid
       await supabase
-        .from('raffle_number_reservations')
+        .from('raffle_reservations')
         .update({
           payment_status: 'paid',
           payment_id: paymentId,

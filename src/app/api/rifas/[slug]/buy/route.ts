@@ -20,10 +20,10 @@ export async function POST(request: NextRequest, { params }: { params: { slug: s
   try {
     const body = await request.json();
     const raffleSlug = params.slug;
-    const number = Number(body.number);
-    const customerName = String(body.customer_name || '').trim();
-    const customerPhone = String(body.customer_phone || '').trim();
-    const customerEmailRaw = String(body.customer_email || '').trim();
+    const number = Number(body.number ?? body.selectedNumber);
+    const customerName = String((body.customer_name ?? body.customerName) || '').trim();
+    const customerPhone = String((body.customer_phone ?? body.customerPhone) || '').trim();
+    const customerEmailRaw = String((body.customer_email ?? body.customerEmail) || '').trim();
     const customerEmail = customerEmailRaw || process.env.TENUTE_BILLING_EMAIL || 'tenute@gmail.com';
 
     if (!raffleSlug) return NextResponse.json({ error: 'Slug inválido' }, { status: 400 });
@@ -60,6 +60,10 @@ export async function POST(request: NextRequest, { params }: { params: { slug: s
       return NextResponse.json({ error: 'Ese número ya está reservado o pagado' }, { status: 409 });
     }
 
+    if (Number(raffle.available_numbers || 0) <= 0) {
+      return NextResponse.json({ error: 'No quedan números disponibles para esta rifa' }, { status: 409 });
+    }
+
     const reservationCode = `RIFA-${String(raffle.slug || raffle.id).toUpperCase()}-${number}-${randomDigits(4)}`;
     const reservationPayload = {
       raffle_id: raffle.id,
@@ -84,6 +88,14 @@ export async function POST(request: NextRequest, { params }: { params: { slug: s
     if (reservationError || !reservation) {
       return NextResponse.json({ error: reservationError?.message || 'No se pudo crear la reserva' }, { status: 500 });
     }
+
+    await supabase
+      .from('raffles')
+      .update({
+        available_numbers: Math.max(0, Number(raffle.available_numbers || 0) - 1),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', raffle.id);
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin;
     const flowResult = await createFlowPayment({

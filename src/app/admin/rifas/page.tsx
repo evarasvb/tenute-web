@@ -16,6 +16,22 @@ interface Raffle {
   available_numbers: number;
   status: 'draft' | 'published';
   featured_products: string[] | null;
+  winner_number?: number | null;
+  winner_customer_name?: string | null;
+  winner_announced_at?: string | null;
+  created_at: string;
+}
+
+interface RaffleEntry {
+  id: string;
+  raffle_id: string;
+  number: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string | null;
+  amount: number;
+  payment_status: 'pending' | 'paid' | 'cancelled' | 'expired';
+  reservation_code: string;
   created_at: string;
 }
 
@@ -50,6 +66,10 @@ export default function AdminRifasPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [form, setForm] = useState(EMPTY_FORM);
+  const [entriesOpenFor, setEntriesOpenFor] = useState<string | null>(null);
+  const [entries, setEntries] = useState<RaffleEntry[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(false);
+  const [drawingFor, setDrawingFor] = useState<string | null>(null);
 
   const soldNumbers = useMemo(
     () => Math.max(0, Number(form.total_numbers || 0) - Number(form.available_numbers || 0)),
@@ -147,6 +167,40 @@ export default function AdminRifasPage() {
     }
     setMessage('Rifa eliminada');
     loadRaffles();
+  }
+
+  async function loadEntries(raffleId: string) {
+    setEntriesOpenFor(raffleId);
+    setEntriesLoading(true);
+    const res = await fetch(`/api/admin/rifas/${raffleId}/entries`);
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || 'No se pudieron cargar participantes');
+      setEntries([]);
+      setEntriesLoading(false);
+      return;
+    }
+    setEntries(data.data || []);
+    setEntriesLoading(false);
+  }
+
+  async function runDraw(raffleId: string) {
+    if (!confirm('¿Sortear ganador ahora? Solo usa números pagados.')) return;
+    setDrawingFor(raffleId);
+    setError('');
+    setMessage('');
+    const res = await fetch(`/api/admin/rifas/${raffleId}/draw`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || 'No se pudo sortear');
+      setDrawingFor(null);
+      return;
+    }
+    const winner = data.winner;
+    setMessage(`Ganador: #${String(winner.number).padStart(3, '0')} - ${winner.customer_name}`);
+    await loadRaffles();
+    await loadEntries(raffleId);
+    setDrawingFor(null);
   }
 
   return (
@@ -323,14 +377,15 @@ export default function AdminRifasPage() {
                 <th className="px-4 py-3 text-left font-medium text-gray-500">Sorteo</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Precio</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Disponibles</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">Ganador</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-500">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>
               ) : raffles.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Aún no hay rifas</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">Aún no hay rifas</td></tr>
               ) : (
                 raffles.map((raffle) => (
                   <tr key={raffle.id} className="border-b border-gray-100">
@@ -346,7 +401,18 @@ export default function AdminRifasPage() {
                     <td className="px-4 py-3 text-gray-600">{raffle.draw_place || '-'}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-800">${raffle.number_price.toLocaleString('es-CL')}</td>
                     <td className="px-4 py-3 text-right text-gray-700">{raffle.available_numbers} / {raffle.total_numbers}</td>
+                    <td className="px-4 py-3 text-right text-xs text-gray-700">
+                      {raffle.winner_number
+                        ? `#${String(raffle.winner_number).padStart(3, '0')} ${raffle.winner_customer_name || ''}`
+                        : '-'}
+                    </td>
                     <td className="px-4 py-3 text-right space-x-2">
+                      <button onClick={() => loadEntries(raffle.id)} className="px-2.5 py-1 text-xs border border-purple-200 text-purple-700 rounded hover:bg-purple-50">
+                        Participantes
+                      </button>
+                      <button onClick={() => runDraw(raffle.id)} disabled={drawingFor === raffle.id} className="px-2.5 py-1 text-xs border border-emerald-200 text-emerald-700 rounded hover:bg-emerald-50 disabled:opacity-60">
+                        {drawingFor === raffle.id ? 'Sorteando...' : 'Sortear'}
+                      </button>
                       <button onClick={() => startEdit(raffle)} className="px-2.5 py-1 text-xs border border-blue-200 text-blue-700 rounded hover:bg-blue-50">
                         Editar
                       </button>
@@ -361,6 +427,57 @@ export default function AdminRifasPage() {
           </table>
         </div>
       </div>
+
+      {entriesOpenFor && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Participantes de la rifa</h3>
+            <button onClick={() => { setEntriesOpenFor(null); setEntries([]); }} className="text-xs px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50">
+              Cerrar
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Número</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Cliente</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Teléfono</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-500">Estado pago</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-500">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entriesLoading ? (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Cargando participantes...</td></tr>
+                ) : entries.length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Sin participantes aún</td></tr>
+                ) : (
+                  entries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-gray-100">
+                      <td className="px-4 py-3 font-mono text-gray-800">#{String(entry.number).padStart(3, '0')}</td>
+                      <td className="px-4 py-3 text-gray-800">{entry.customer_name}</td>
+                      <td className="px-4 py-3 text-gray-600">{entry.customer_phone}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                          entry.payment_status === 'paid'
+                            ? 'bg-green-100 text-green-700'
+                            : entry.payment_status === 'pending'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {entry.payment_status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700">${entry.amount.toLocaleString('es-CL')}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
