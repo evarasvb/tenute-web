@@ -5,13 +5,26 @@ import Footer from '@/components/layout/Footer';
 import ProductDetail from '@/components/product/ProductDetail';
 
 async function getProduct(slug: string) {
-  const { data, error } = await supabase
+  const normalizedSlug = decodeURIComponent(slug).trim().toLowerCase();
+
+  const { data } = await supabase
     .from('products')
-    .select('*, categories(name)')
-    .eq('slug', slug)
-    .single();
-  if (error) console.error('[ProductPage] Supabase error:', error.message);
-  return data;
+    .select('id, name, slug, description, price, compare_price, stock, image_url, categories(name), sku, unit, format, content_info, metadata, video_url, active')
+    .eq('slug', normalizedSlug)
+    .eq('active', true)
+    .limit(1);
+
+  // Avoid 404s when there are duplicate slugs in the database.
+  if (data && data.length > 0) return data[0];
+
+  // Fallback for legacy rows where active can be null/false.
+  const { data: fallback } = await supabase
+    .from('products')
+    .select('id, name, slug, description, price, compare_price, stock, image_url, categories(name), sku, unit, format, content_info, metadata, video_url, active')
+    .eq('slug', normalizedSlug)
+    .limit(1);
+
+  return fallback?.[0] || null;
 }
 
 export default async function ProductPage({ params }: { params: { slug: string } }) {
