@@ -1,7 +1,17 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
 
-interface Product { id: string; name: string; sku: string|null; barcode: string|null; cost_price: number|null; image_url: string|null; stock_ocoa: number; stock_local: number; }
+interface Product {
+  id: string;
+  name: string;
+  sku: string | null;
+  barcode?: string | null;
+  cost_price: number | null;
+  image_url: string | null;
+  stock_ocoa: number;
+  stock_local21: number;
+}
 interface PurchaseItem { product_id: string; product_name: string; product_sku: string; quantity: number; unit_cost: number; warehouse: 'ocoa'|'local'; }
 interface Purchase { id: string; purchase_number: string; supplier_name: string; supplier_rut: string|null; invoice_number: string|null; purchase_date: string; total_amount: number; notes: string|null; status: string; created_at: string; items: Array<{ id: string; product_name: string; product_sku: string|null; quantity: number; unit_cost: number; warehouse: string; }>; }
 
@@ -136,7 +146,16 @@ export default function ComprasPage() {
                         else { setItems(prev => [...prev, newItem]); }
                         setProductSearch('');
                       }} className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-sm">
-                        {p.image_url && <img src={p.image_url} alt="" className="w-7 h-7 object-cover rounded"/>}
+                        {p.image_url && (
+                          <Image
+                            src={p.image_url}
+                            alt=""
+                            width={28}
+                            height={28}
+                            unoptimized
+                            className="w-7 h-7 object-cover rounded"
+                          />
+                        )}
                         <div><p className="font-medium text-gray-800 truncate max-w-[180px]">{p.name}</p>
                           <p className="text-xs text-gray-400">{p.sku}{p.cost_price ? ` · ${formatCLP(p.cost_price)}`:''}</p></div>
                       </button>
@@ -202,4 +221,4 @@ export default function ComprasPage() {
       </div>
     </div>
   );
-                  }
+}

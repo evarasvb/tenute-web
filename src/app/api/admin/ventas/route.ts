@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Nombre de cliente requerido' }, { status: 400 });
   }
     if (!Array.isArray(items) || items.length === 0) {
-          return NextResponse.json({ error: 'Al menos un item es requerido' }, { status: 400 });
+        return NextResponse.json({ error: 'Al menos un item es requerido' }, { status: 400 });
     }
     for (const item of items) {
           const qty = Number(item.quantity);

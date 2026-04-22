@@ -2,17 +2,18 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Image from 'next/image';
 
 interface Product {
   id: string;
   name: string;
   sku: string;
-    barcode: string | null;
+  barcode: string | null;
   price: number;
   cost_price: number;
   stock: number;
   stock_ocoa: number;
-  stock_local: number;
+  stock_local21: number;
   brand: string;
   image_url: string;
   category_id: string;
@@ -306,6 +307,7 @@ export default function AdminProductsPage() {
                 <th className="px-3 py-3 text-left font-medium text-gray-500 w-10">Img</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('name')}>Nombre <SortIcon col="name" /></th>
                 <th className="px-3 py-3 text-left font-medium text-gray-500 hidden md:table-cell">SKU</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-500 hidden lg:table-cell">Barcode</th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('price')}>Precio <SortIcon col="price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell cursor-pointer" onClick={() => handleSort('cost_price')}>Costo <SortIcon col="cost_price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Margen</th>
@@ -320,24 +322,34 @@ export default function AdminProductsPage() {
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100 animate-pulse">
-                    {Array.from({ length: 11 }).map((__, j) => (
+                    {Array.from({ length: 12 }).map((__, j) => (
                       <td key={j} className="px-3 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : products.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
+                <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
               ) : (
                 products.map(p => {
                   const margin = calcMargin(p.price, p.cost_price);
-                  const totalStock = (p.stock_ocoa || 0) + (p.stock_local || 0) || p.stock || 0;
+                  const totalStock = (p.stock_ocoa || 0) + (p.stock_local21 || 0) || p.stock || 0;
                   return (
                     <tr key={p.id} className={'border-b border-gray-100 hover:bg-gray-50 transition-colors' + (!p.active ? ' opacity-50' : '')}>
                       <td className="px-3 py-2">
-                        {p.image_url ? <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" /> : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
+                        {p.image_url ? (
+                          <Image
+                            src={p.image_url}
+                            alt=""
+                            width={32}
+                            height={32}
+                            unoptimized
+                            className="w-8 h-8 rounded object-cover"
+                          />
+                        ) : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-900 max-w-[180px] truncate">{p.name}</td>
                       <td className="px-3 py-2 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || '-'}</td>
+                      <td className="px-3 py-2 text-gray-500 hidden lg:table-cell font-mono text-xs">{p.barcode || '-'}</td>
                       <td className="px-3 py-2 text-right font-medium">{formatCLP(p.price)}</td>
                       <td className="px-3 py-2 text-right text-gray-500 hidden lg:table-cell">{p.cost_price ? formatCLP(p.cost_price) : <span className="text-gray-300">â</span>}</td>
                       <td className={'px-3 py-2 text-right hidden lg:table-cell ' + marginColor(margin)}>
@@ -347,7 +359,7 @@ export default function AdminProductsPage() {
                         <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">{p.stock_ocoa || 0}</span>
                       </td>
                       <td className="px-3 py-2 text-center hidden xl:table-cell">
-                        <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">{p.stock_local || 0}</span>
+                        <span className="text-xs text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full">{p.stock_local21 || 0}</span>
                       </td>
                       <td className="px-3 py-2 text-right">
                         <span className={totalStock <= 0 ? 'text-red-600 font-bold' : totalStock < 5 ? 'text-orange-500 font-semibold' : 'text-gray-700'}>
@@ -412,7 +424,7 @@ export default function AdminProductsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full">
             <h3 className="text-lg font-semibold mb-1">Importar productos masivamente</h3>
-            <p className="text-xs text-gray-400 mb-4">Columnas: <span className="font-mono bg-gray-100 px-1 rounded">name, sku, price, cost_price, stock_ocoa, stock_local, brand, description, image_url, active</span></p>
+            <p className="text-xs text-gray-400 mb-4">Columnas: <span className="font-mono bg-gray-100 px-1 rounded">name, sku, barcode, price, cost_price, stock_ocoa, stock_local21, brand, description, image_url, active</span></p>
             <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
               <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
               <span className="text-sm font-medium text-gray-600">{importing ? 'Importando...' : 'Seleccionar archivo Excel o CSV'}</span>
