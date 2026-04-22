@@ -19,6 +19,7 @@ export default function Footer() {
           <ul className="flex flex-col gap-2 text-sm">
             <li><Link href="/" className="hover:text-white transition-colors">Inicio</Link></li>
             <li><Link href="/catalogo" className="hover:text-white transition-colors">Catálogo</Link></li>
+            <li><Link href="/rifas" className="hover:text-white transition-colors">Rifas online</Link></li>
             <li><Link href="/#mayorista" className="hover:text-white transition-colors">Mayorista</Link></li>
             <li><Link href="/politicas" className="hover:text-white transition-colors">Políticas de cambio y envío</Link></li>
           </ul>

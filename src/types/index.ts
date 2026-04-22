@@ -136,3 +136,21 @@ export interface ShippingZone {
   created_at?: string;
   updated_at?: string;
 }
+
+export interface Raffle {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  hero_image_url?: string | null;
+  social_hashtag?: string | null;
+  draw_place?: string | null;
+  draw_date?: string | null;
+  number_price: number;
+  total_numbers: number;
+  available_numbers: number;
+  status: 'draft' | 'published';
+  featured_products?: string[];
+  created_at?: string;
+  updated_at?: string;
+}

@@ -117,6 +117,18 @@ export default function AdminDashboard() {
             </div>
             <p className="text-sm text-gray-500">Editar catalogo, precios e imagenes</p>
           </Link>
+          <Link href="/admin/rifas" className="bg-white rounded-xl border border-gray-200 p-6 hover:border-pink-300 hover:shadow-md transition-all group">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-9 h-9 rounded-lg bg-pink-100 flex items-center justify-center">
+                <svg className="w-5 h-5 text-pink-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.868v4.264a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8.25A2.25 2.25 0 015.25 6h13.5A2.25 2.25 0 0121 8.25v7.5A2.25 2.25 0 0118.75 18H5.25A2.25 2.25 0 013 15.75v-7.5z" />
+                </svg>
+              </div>
+              <h3 className="text-base font-semibold text-gray-900 group-hover:text-pink-600 transition-colors">Rifas y redes</h3>
+            </div>
+            <p className="text-sm text-gray-500">Configura rifas online para Instagram/TikTok</p>
+          </Link>
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
