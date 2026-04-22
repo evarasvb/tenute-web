@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import type { Order, OrderStatus } from '@/types';
 
 function formatCLP(n: number) {
@@ -447,7 +448,14 @@ export default function AdminOrderDetailPage({
                 <div key={item.id} className="flex gap-3 items-center">
                   <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 flex items-center justify-center">
                     {item.product_image_url ? (
-                      <img src={item.product_image_url} alt={item.product_name} className="w-full h-full object-cover" />
+                      <Image
+                        src={item.product_image_url}
+                        alt={item.product_name}
+                        width={48}
+                        height={48}
+                        unoptimized
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
                       <span className="text-sm text-gray-300">📦</span>
                     )}

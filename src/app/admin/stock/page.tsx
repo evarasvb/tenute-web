@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface Product {
   id: string;
   name: string;
   sku: string;
+  barcode?: string | null;
   price: number;
   cost_price: number | null;
   stock: number;
@@ -176,6 +178,7 @@ export default function StockPage() {
               <tr className="border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Producto</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600 hidden md:table-cell">SKU</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Barcode</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600 hidden lg:table-cell">Costo</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600 text-blue-600">Ocoa</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600 text-purple-600">Local 21</th>
@@ -191,7 +194,14 @@ export default function StockPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {p.image_url && (
-                        <img src={p.image_url} alt="" className="w-8 h-8 object-cover rounded" />
+                        <Image
+                          src={p.image_url}
+                          alt=""
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="w-8 h-8 object-cover rounded"
+                        />
                       )}
                       <div>
                         <p className="font-medium text-gray-800 truncate max-w-[200px]">{p.name}</p>
@@ -200,6 +210,7 @@ export default function StockPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || 'â'}</td>
+                  <td className="px-4 py-3 text-gray-500 hidden lg:table-cell font-mono text-xs">{p.barcode || 'â'}</td>
                   <td className="px-4 py-3 text-right text-gray-500 hidden lg:table-cell">
                     {p.cost_price ? formatCLP(p.cost_price) : <span className="text-gray-300">â</span>}
                   </td>
@@ -286,7 +297,7 @@ export default function StockPage() {
               ))}
               {filtered.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
                     No se encontraron productos
                   </td>
                 </tr>
