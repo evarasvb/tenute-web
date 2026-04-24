@@ -346,7 +346,8 @@ export default function VentasPage() {
       });
       const data: { error?: string; sale?: { sale_number: string } } = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al registrar venta');
-      setSuccess(`Venta ${data.sale.sale_number} registrada correctamente`);
+      const saleNumber = data.sale?.sale_number || 'VM-----';
+      setSuccess(`Venta ${saleNumber} registrada correctamente`);
       setCustomerName(''); setCustomerPhone(''); setCustomerRut('');
       setPaymentMethod('cash'); setDiscount(0); setNotes('');
       setItems([]);
