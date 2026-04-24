@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+type LoginRole = 'admin' | 'seller';
+
 export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<LoginRole>('admin');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -17,7 +20,7 @@ export default function AdminLoginPage() {
     const res = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, role }),
     });
 
     if (res.ok) {
@@ -45,6 +48,20 @@ export default function AdminLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
+            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-1">
+              Perfil
+            </label>
+            <select
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as LoginRole)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="admin">Administrador/a</option>
+              <option value="seller">Vendedora (solo módulo ventas)</option>
+            </select>
+          </div>
+          <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               Contraseña
             </label>
@@ -58,6 +75,11 @@ export default function AdminLoginPage() {
               autoFocus
             />
           </div>
+          {role === 'seller' && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg">
+              Este perfil solo puede usar la pestaña de ventas y no tiene permisos para inventario, rifas ni configuración.
+            </p>
+          )}
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
