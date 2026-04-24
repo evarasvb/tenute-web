@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdminSession } from '@/lib/admin-session';
 
 export async function GET(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value === 'authenticated') {
-    return NextResponse.json({ authenticated: true });
+  const session = getAdminSession(request);
+  if (session.authenticated) {
+    return NextResponse.json({ authenticated: true, role: session.role });
   }
-  return NextResponse.json({ authenticated: false }, { status: 401 });
+  return NextResponse.json({ authenticated: false, role: null }, { status: 401 });
 }

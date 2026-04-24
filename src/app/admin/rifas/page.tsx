@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 
 interface Raffle {
   id: string;
@@ -35,6 +36,13 @@ interface RaffleEntry {
   created_at: string;
 }
 
+interface InventoryProduct {
+  id: string;
+  name: string;
+  sku: string | null;
+  image_url: string | null;
+}
+
 const EMPTY_FORM = {
   title: '',
   slug: '',
@@ -49,6 +57,8 @@ const EMPTY_FORM = {
   status: 'draft',
   featured_products_text: '',
 };
+
+type RaffleFormState = typeof EMPTY_FORM;
 
 function slugify(text: string) {
   return text
@@ -70,6 +80,8 @@ export default function AdminRifasPage() {
   const [entries, setEntries] = useState<RaffleEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [drawingFor, setDrawingFor] = useState<string | null>(null);
+  const [inventoryProducts, setInventoryProducts] = useState<InventoryProduct[]>([]);
+  const [inventorySearch, setInventorySearch] = useState('');
 
   const soldNumbers = useMemo(
     () => Math.max(0, Number(form.total_numbers || 0) - Number(form.available_numbers || 0)),
@@ -93,6 +105,72 @@ export default function AdminRifasPage() {
   useEffect(() => {
     loadRaffles();
   }, []);
+
+  useEffect(() => {
+    fetch('/api/admin/products?limit=400&page=1&active=true')
+      .then((res) => res.json())
+      .then((data) => {
+        setInventoryProducts(data.data || data.products || []);
+      })
+      .catch(() => {
+        setInventoryProducts([]);
+      });
+  }, []);
+
+  const selectedFeaturedProducts = useMemo(() => {
+    const names = form.featured_products_text
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const selectedByName = new Set(names.map((x) => x.toLowerCase()));
+    return inventoryProducts.filter((product) => selectedByName.has(product.name.toLowerCase()));
+  }, [form.featured_products_text, inventoryProducts]);
+
+  const filteredInventoryProducts = useMemo(() => {
+    const selectedNames = new Set(
+      form.featured_products_text
+        .split('\n')
+        .map((x) => x.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const q = inventorySearch.trim().toLowerCase();
+    return inventoryProducts
+      .filter((product) => {
+        if (selectedNames.has(product.name.toLowerCase())) return false;
+        if (!q) return true;
+        return (
+          product.name.toLowerCase().includes(q) ||
+          (product.sku || '').toLowerCase().includes(q)
+        );
+      })
+      .slice(0, 25);
+  }, [form.featured_products_text, inventoryProducts, inventorySearch]);
+
+  function setFormField<K extends keyof RaffleFormState>(field: K, value: RaffleFormState[K]) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function addFeaturedProductFromInventory(product: InventoryProduct) {
+    const current = form.featured_products_text
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (current.some((entry) => entry.toLowerCase() === product.name.toLowerCase())) return;
+    const next = [...current, product.name];
+    setFormField('featured_products_text', next.join('\n'));
+    if (!form.hero_image_url && product.image_url) {
+      setFormField('hero_image_url', product.image_url);
+    }
+  }
+
+  function removeFeaturedProduct(name: string) {
+    const next = form.featured_products_text
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .filter((entry) => entry.toLowerCase() !== name.toLowerCase());
+    setFormField('featured_products_text', next.join('\n'));
+  }
 
   function resetForm() {
     setForm(EMPTY_FORM);
@@ -357,6 +435,90 @@ export default function AdminRifasPage() {
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
             placeholder={'iPhone 15 Pro Max\nAirPods Pro\nGift Box de papelería premium'}
           />
+          <p className="text-xs text-gray-500 mt-2">
+            Puedes escribir manualmente o elegir productos desde inventario para usar su foto automáticamente.
+          </p>
+          <div className="mt-3 border border-gray-200 rounded-xl p-3 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                value={inventorySearch}
+                onChange={(e) => setInventorySearch(e.target.value)}
+                placeholder="Buscar en inventario por nombre o SKU..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <div className="text-xs text-gray-500 flex items-center">
+                Seleccionados desde inventario: {selectedFeaturedProducts.length}
+              </div>
+            </div>
+            {selectedFeaturedProducts.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-600 mb-2">Productos seleccionados</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {selectedFeaturedProducts.map((product) => (
+                    <div key={`selected-${product.id}`} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50">
+                      {product.image_url ? (
+                        <Image
+                          src={product.image_url}
+                          alt={product.name}
+                          width={40}
+                          height={40}
+                          unoptimized
+                          className="w-10 h-10 rounded object-cover border border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-gray-200" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-800 truncate">{product.name}</p>
+                        <p className="text-xs text-gray-500">{product.sku || 'Sin SKU'}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeFeaturedProduct(product.name)}
+                        className="text-xs px-2 py-1 border border-red-200 text-red-700 rounded hover:bg-red-50"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-semibold text-gray-600 mb-2">Agregar desde inventario</p>
+              {filteredInventoryProducts.length === 0 ? (
+                <p className="text-xs text-gray-400">No hay más productos para agregar con ese filtro.</p>
+              ) : (
+                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {filteredInventoryProducts.map((product) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      onClick={() => addFeaturedProductFromInventory(product)}
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors flex items-center gap-2"
+                    >
+                      {product.image_url ? (
+                        <Image
+                          src={product.image_url}
+                          alt={product.name}
+                          width={36}
+                          height={36}
+                          unoptimized
+                          className="w-9 h-9 rounded object-cover border border-gray-200"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded bg-gray-200" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm text-gray-800 truncate">{product.name}</p>
+                        <p className="text-xs text-gray-500">{product.sku || 'Sin SKU'}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60">

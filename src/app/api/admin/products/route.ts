@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
-
-function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-  return null;
-}
+import { requireAdminRole, requireVentasRole } from '@/lib/admin-session';
 
 function isMissingBarcodeColumnError(message?: string) {
   if (!message) return false;
@@ -53,7 +46,7 @@ function normalizeProductRow(row: Record<string, unknown>) {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = checkAuth(request);
+  const authError = requireVentasRole(request);
   if (authError) return authError;
 
   const supabase = createAdminClient();
@@ -147,7 +140,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = checkAuth(request);
+  const authError = requireAdminRole(request);
   if (authError) return authError;
 
   const supabase = createAdminClient();

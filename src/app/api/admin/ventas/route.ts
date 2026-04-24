@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { requireVentasRole } from '@/lib/admin-session';
 
 // WAREHOUSE FIELD MAP — canonical mapping: warehouse slug -> DB column
 // 'ocoa'    => stock_ocoa   (Bodega Ocoa)
@@ -11,12 +12,9 @@ const WAREHOUSE_FIELD: Record<string, 'stock_ocoa' | 'stock_local21'> = {
     local: 'stock_local21',
 };
 
-function checkAuth(req: NextRequest) {
-    return req.cookies.get('admin_session')?.value === 'authenticated';
-}
-
 export async function GET(request: NextRequest) {
-    if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    const authError = requireVentasRole(request);
+    if (authError) return authError;
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
@@ -38,7 +36,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-    if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    const authError = requireVentasRole(request);
+    if (authError) return authError;
     const body = await request.json();
     const { customer_name, customer_phone, customer_rut, sale_date, payment_method, discount, notes, items } = body;
 

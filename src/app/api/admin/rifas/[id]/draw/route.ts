@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { requireAdminRole } from '@/lib/admin-session';
 
 function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-  return null;
+  return requireAdminRole(request);
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
