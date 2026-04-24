@@ -11,17 +11,27 @@ interface PublicRaffle {
   slug: string;
   description: string | null;
   hero_image_url: string | null;
-  social_hashtag: string | null;
+  promo_headline: string | null;
+  hashtag: string | null;
+  draw_method: 'random_seed' | 'manual' | 'external';
   draw_place: string | null;
   draw_date: string | null;
-  number_price: number;
-  total_numbers: number;
-  available_numbers: number;
-  featured_products: string[] | null;
-}
-
-function formatCLP(n: number) {
-  return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+  min_sold_to_draw: number;
+  raffle_prizes:
+    | {
+        id: string;
+        title: string;
+        position: number;
+      }[]
+    | null;
+  raffle_media:
+    | {
+        id: string;
+        kind: 'image' | 'video';
+        url: string;
+        sort_order: number;
+      }[]
+    | null;
 }
 
 function formatCountdown(drawDate: string | null) {
@@ -121,8 +131,8 @@ export default function RifasPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {raffles.map((raffle) => {
-                const sold = Math.max(0, raffle.total_numbers - raffle.available_numbers);
-                const soldPercent = raffle.total_numbers > 0 ? Math.round((sold / raffle.total_numbers) * 100) : 0;
+                const mediaCount = raffle.raffle_media?.length || 0;
+                const prizeCount = raffle.raffle_prizes?.length || 0;
                 return (
                   <article key={raffle.id} className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                     {raffle.hero_image_url && (
@@ -131,11 +141,12 @@ export default function RifasPage() {
                     <div className="p-5">
                       <h3 className="text-lg font-bold text-gray-900">{raffle.title}</h3>
                       {raffle.description && <p className="text-sm text-gray-600 mt-2">{raffle.description}</p>}
+                      {raffle.promo_headline && <p className="text-sm font-medium text-indigo-700 mt-2">{raffle.promo_headline}</p>}
 
                       <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                         <div className="rounded-lg bg-gray-50 p-2">
-                          <p className="text-gray-500">Precio número</p>
-                          <p className="font-semibold text-gray-900">{formatCLP(raffle.number_price || 0)}</p>
+                          <p className="text-gray-500">Método</p>
+                          <p className="font-semibold text-gray-900">{raffle.draw_method}</p>
                         </div>
                         <div className="rounded-lg bg-gray-50 p-2">
                           <p className="text-gray-500">Lugar sorteo</p>
@@ -145,20 +156,20 @@ export default function RifasPage() {
 
                       <div className="mt-4">
                         <div className="flex items-center justify-between text-xs text-gray-600">
-                          <span>Números vendidos: {sold}</span>
-                          <span>{soldPercent}%</span>
+                          <span>Premios: {prizeCount}</span>
+                          <span>Media: {mediaCount}</span>
                         </div>
-                        <div className="mt-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-pink-500 to-purple-500" style={{ width: `${Math.min(100, soldPercent)}%` }} />
+                        <div className="mt-2 text-xs text-purple-700 font-semibold bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                          Mínimo vendidos para sortear: {Math.max(0, raffle.min_sold_to_draw || 0)}
                         </div>
                       </div>
 
-                      {Array.isArray(raffle.featured_products) && raffle.featured_products.length > 0 && (
+                      {Array.isArray(raffle.raffle_prizes) && raffle.raffle_prizes.length > 0 && (
                         <div className="mt-4">
                           <p className="text-xs font-semibold text-gray-600 mb-2">Premios</p>
                           <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
-                            {raffle.featured_products.slice(0, 4).map((item, idx) => (
-                              <li key={`${raffle.id}-prize-${idx}`}>{item}</li>
+                            {raffle.raffle_prizes.slice(0, 4).map((item) => (
+                              <li key={item.id}>{item.title}</li>
                             ))}
                           </ul>
                         </div>
@@ -170,9 +181,9 @@ export default function RifasPage() {
 
                       <div className="mt-5 flex items-center justify-between gap-3">
                         <Link href={`/rifas/${raffle.slug}`} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
-                          Comprar tu número
+                          Ver rifa
                         </Link>
-                        <span className="text-xs text-gray-500">{raffle.social_hashtag || '#rifaTenute'}</span>
+                        <span className="text-xs text-gray-500">{raffle.hashtag || '#rifaTenute'}</span>
                       </div>
                     </div>
                   </article>
