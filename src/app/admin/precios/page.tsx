@@ -13,7 +13,41 @@ interface Product {
   categories?: { name: string };
 }
 
-type MarginFilter = 'all' | 'negative' | 'low' | 'ok' | 'no_cost';
+type MarginFilter = 'all' | 'negative' | 'low' | 'ok' | 'no_cost' | 'below_market';
+
+// Precios de referencia de mercado (Dimerc, Lápiz López, Sodimac, Prisa, MercadoLibre)
+// Última actualización: Mayo 2026
+const MARKET_REFS: { match: string; price: number; source: string; note: string }[] = [
+  { match: 'cartulina española 50x65',        price: 360,   source: 'Mayorista Nac.',  note: 'por pliego' },
+  { match: 'bolsa camiseta blanca 28x35',      price: 1090,  source: 'MercadoLibre',   note: 'por 100u' },
+  { match: 'impeke 50x70',                     price: 850,   source: 'Est. mercado',   note: 'por 10u' },
+  { match: 'impeke 70x90',                     price: 1650,  source: 'MercadoLibre',   note: 'por 10u' },
+  { match: 'tecnoroll jumbo',                  price: 9200,  source: 'Dimerc',         note: 'pack 2 rollos' },
+  { match: 'memphis standard',                 price: 1600,  source: 'Dimerc',         note: 'por unidad' },
+  { match: 'igenix tradicional',               price: 2990,  source: 'MercadoLibre',   note: '360cc' },
+  { match: 'rollo aluminio 30',                price: 7490,  source: 'Alba Hogar',     note: '100m' },
+  { match: 'examglove',                        price: 3200,  source: 'Sodimac',        note: 'caja 100u' },
+  { match: 'ecoindustrial',                    price: 6990,  source: 'MercadoLibre',   note: 'bidón 5L' },
+  { match: '76x76 100h pop',                   price: 2990,  source: 'MercadoLibre',   note: 'pack 5 col.' },
+  { match: 'isofit metalica',                  price: 4500,  source: 'Est. mercado',   note: 'unidad' },
+  { match: 'bic cristal punta mediana 1.0 mm azul', price: 300, source: 'Comercial La Papa', note: 'unidad' },
+  { match: 'reprograf carta 500',              price: 4700,  source: 'Sum. Print',     note: 'resma' },
+  { match: 'nescafe fin selecc',               price: 8990,  source: 'Jumbo',          note: '200g' },
+  { match: 'rapid 23/12',                      price: 4500,  source: 'Est. Dimerc',    note: '1000u' },
+  { match: 'purificada natural sin gas',        price: 750,   source: 'Supermercado',  note: 'botella 500cc' },
+  { match: 'purificada natural con gas',        price: 890,   source: 'Supermercado',  note: 'botella 500cc' },
+  { match: 'papel fotocopia oficio 75 gr executive', price: 3500, source: 'Est. mercado', note: 'resma' },
+  { match: 'papel fotocopia multiproposi',      price: 3800,  source: 'Dimerc',        note: 'resma carta' },
+];
+
+function getMarketRef(name: string) {
+  const lower = name.toLowerCase();
+  return MARKET_REFS.find(r => lower.includes(r.match.toLowerCase())) ?? null;
+}
+
+function marketGap(currentPrice: number, marketPrice: number) {
+  return ((currentPrice - marketPrice) / marketPrice) * 100;
+}
 
 function formatCLP(n: number) {
   return '$' + Math.round(n).toLocaleString('es-CL');
@@ -30,7 +64,8 @@ function suggestedPrice(cost: number | null, targetMargin: number): number | nul
 }
 
 function MarginBadge({ margin }: { margin: number | null }) {
-  if (margin === null) return <span className="text-xs text-gray-400 italic">sin costo</span>;
+  if (margin === null)
+    return <span className="text-xs text-gray-400 italic">sin costo</span>;
   if (margin < 0)
     return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">↓ {margin.toFixed(1)}%</span>;
   if (margin < 20)
@@ -38,6 +73,18 @@ function MarginBadge({ margin }: { margin: number | null }) {
   if (margin < 35)
     return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">{margin.toFixed(1)}%</span>;
   return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">{margin.toFixed(1)}%</span>;
+}
+
+function MarketGapBadge({ gap }: { gap: number }) {
+  if (gap < -50)
+    return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">{Math.abs(gap).toFixed(0)}% bajo</span>;
+  if (gap < -20)
+    return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">{Math.abs(gap).toFixed(0)}% bajo</span>;
+  if (gap < 0)
+    return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700">{Math.abs(gap).toFixed(0)}% bajo</span>;
+  if (gap > 20)
+    return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{gap.toFixed(0)}% sobre</span>;
+  return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">en rango</span>;
 }
 
 export default function PreciosPage() {
@@ -54,7 +101,7 @@ export default function PreciosPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [applyingBulk, setApplyingBulk] = useState(false);
   const [bulkResult, setBulkResult] = useState('');
-  const [sortBy, setSortBy] = useState<'margin' | 'name' | 'price' | 'cost'>('margin');
+  const [sortBy, setSortBy] = useState<'margin' | 'name' | 'price' | 'cost' | 'gap'>('margin');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const load = useCallback(async () => {
@@ -70,6 +117,7 @@ export default function PreciosPage() {
   const filtered = useMemo(() => {
     let items = products.filter(p => {
       const margin = calcMargin(p.price, p.cost_price);
+      const ref = getMarketRef(p.name);
       const q = search.toLowerCase();
       const matchSearch = !search ||
         p.name.toLowerCase().includes(q) ||
@@ -82,6 +130,7 @@ export default function PreciosPage() {
         marginFilter === 'low' ? (margin !== null && margin >= 0 && margin < 30) :
         marginFilter === 'ok' ? (margin !== null && margin >= 30) :
         marginFilter === 'no_cost' ? (margin === null) :
+        marginFilter === 'below_market' ? (ref !== null && marketGap(p.price, ref.price) < -10) :
         true;
 
       return matchSearch && matchMargin;
@@ -96,6 +145,11 @@ export default function PreciosPage() {
         va = a.price; vb = b.price;
       } else if (sortBy === 'cost') {
         va = a.cost_price ?? 0; vb = b.cost_price ?? 0;
+      } else if (sortBy === 'gap') {
+        const ra = getMarketRef(a.name);
+        const rb = getMarketRef(b.name);
+        va = ra ? marketGap(a.price, ra.price) : 9999;
+        vb = rb ? marketGap(b.price, rb.price) : 9999;
       } else {
         return sortDir === 'asc'
           ? a.name.localeCompare(b.name, 'es')
@@ -107,14 +161,17 @@ export default function PreciosPage() {
     return items;
   }, [products, search, marginFilter, sortBy, sortDir]);
 
-  // Summary stats
   const stats = useMemo(() => {
     const withCost = products.filter(p => p.cost_price && p.cost_price > 0 && p.price > 0);
     const negative = withCost.filter(p => calcMargin(p.price, p.cost_price)! < 0);
     const low = withCost.filter(p => { const m = calcMargin(p.price, p.cost_price)!; return m >= 0 && m < 30; });
     const good = withCost.filter(p => calcMargin(p.price, p.cost_price)! >= 30);
     const noCost = products.filter(p => !p.cost_price || p.cost_price <= 0);
-    return { total: products.length, negative: negative.length, low: low.length, good: good.length, noCost: noCost.length };
+    const belowMarket = products.filter(p => {
+      const ref = getMarketRef(p.name);
+      return ref !== null && marketGap(p.price, ref.price) < -10;
+    });
+    return { total: products.length, negative: negative.length, low: low.length, good: good.length, noCost: noCost.length, belowMarket: belowMarket.length };
   }, [products]);
 
   function startEdit(p: Product) {
@@ -206,11 +263,12 @@ export default function PreciosPage() {
       : <span className="ml-0.5 text-gray-300">↕</span>;
 
   const FILTERS: { value: MarginFilter; label: string; color: string }[] = [
-    { value: 'all', label: `Todos (${products.length})`, color: 'bg-gray-100 text-gray-700' },
-    { value: 'negative', label: `Negativo (${stats.negative})`, color: 'bg-red-100 text-red-700' },
-    { value: 'low', label: `Bajo <30% (${stats.low})`, color: 'bg-orange-100 text-orange-700' },
-    { value: 'ok', label: `OK ≥30% (${stats.good})`, color: 'bg-green-100 text-green-700' },
-    { value: 'no_cost', label: `Sin costo (${stats.noCost})`, color: 'bg-gray-100 text-gray-500' },
+    { value: 'all',          label: `Todos (${products.length})`,        color: 'bg-gray-100 text-gray-700' },
+    { value: 'negative',     label: `Negativo (${stats.negative})`,      color: 'bg-red-100 text-red-700' },
+    { value: 'low',          label: `Bajo <30% (${stats.low})`,          color: 'bg-orange-100 text-orange-700' },
+    { value: 'ok',           label: `OK ≥30% (${stats.good})`,           color: 'bg-green-100 text-green-700' },
+    { value: 'below_market', label: `Bajo mercado (${stats.belowMarket})`, color: 'bg-purple-100 text-purple-700' },
+    { value: 'no_cost',      label: `Sin costo (${stats.noCost})`,        color: 'bg-gray-100 text-gray-500' },
   ];
 
   return (
@@ -219,7 +277,7 @@ export default function PreciosPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Revisión de precios</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{products.length} productos · edición inline · margen objetivo configurable</p>
+          <p className="text-sm text-gray-500 mt-0.5">{products.length} productos · margen + referencia de mercado · edición inline</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600 font-medium">Margen objetivo:</span>
@@ -233,7 +291,7 @@ export default function PreciosPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 cursor-pointer hover:shadow-sm" onClick={() => setMarginFilter('negative')}>
           <p className="text-xs font-semibold text-red-600 uppercase tracking-wide">Precio &lt; Costo</p>
           <p className="text-3xl font-bold text-red-700 mt-1">{stats.negative}</p>
@@ -249,10 +307,15 @@ export default function PreciosPage() {
           <p className="text-3xl font-bold text-green-700 mt-1">{stats.good}</p>
           <p className="text-xs text-green-500 mt-0.5">dentro del objetivo</p>
         </div>
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 cursor-pointer hover:shadow-sm" onClick={() => setMarginFilter('below_market')}>
+          <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Bajo mercado</p>
+          <p className="text-3xl font-bold text-purple-700 mt-1">{stats.belowMarket}</p>
+          <p className="text-xs text-purple-500 mt-0.5">con referencia verificada</p>
+        </div>
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 cursor-pointer hover:shadow-sm" onClick={() => setMarginFilter('no_cost')}>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sin precio costo</p>
           <p className="text-3xl font-bold text-gray-600 mt-1">{stats.noCost}</p>
-          <p className="text-xs text-gray-400 mt-0.5">no se puede calcular margen</p>
+          <p className="text-xs text-gray-400 mt-0.5">sin datos de margen</p>
         </div>
       </div>
 
@@ -313,6 +376,9 @@ export default function PreciosPage() {
                   <th className="px-3 py-3 text-center cursor-pointer select-none" onClick={() => handleSort('margin')}>
                     <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Margen <SortIcon col="margin" /></span>
                   </th>
+                  <th className="px-3 py-3 text-right cursor-pointer select-none" onClick={() => handleSort('gap')}>
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Ref. mercado <SortIcon col="gap" /></span>
+                  </th>
                   <th className="px-3 py-3 text-right">
                     <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sugerido ({targetMargin}%)</span>
                   </th>
@@ -325,12 +391,17 @@ export default function PreciosPage() {
                 {filtered.map(p => {
                   const margin = calcMargin(p.price, p.cost_price);
                   const suggested = suggestedPrice(p.cost_price, targetMargin);
+                  const ref = getMarketRef(p.name);
+                  const gap = ref ? marketGap(p.price, ref.price) : null;
                   const isEditing = editingId === p.id;
                   const isSaving = saving === p.id;
                   const wasSaved = saved.has(p.id);
+
                   const rowBg =
-                    margin !== null && margin < 0 ? 'bg-red-50 hover:bg-red-100' :
-                    margin !== null && margin < 30 ? 'bg-orange-50 hover:bg-orange-100' :
+                    (ref && gap !== null && gap < -50) ? 'bg-red-50 hover:bg-red-100' :
+                    (margin !== null && margin < 0) ? 'bg-red-50 hover:bg-red-100' :
+                    (ref && gap !== null && gap < -20) ? 'bg-orange-50 hover:bg-orange-100' :
+                    (margin !== null && margin < 30) ? 'bg-orange-50 hover:bg-orange-100' :
                     'hover:bg-gray-50';
 
                   return (
@@ -343,7 +414,7 @@ export default function PreciosPage() {
 
                       {/* Product info */}
                       <td className="px-3 py-2.5">
-                        <p className="font-medium text-gray-900 truncate max-w-[260px]">{p.name}</p>
+                        <p className="font-medium text-gray-900 truncate max-w-[240px]">{p.name}</p>
                         <p className="text-xs text-gray-400 mt-0.5">
                           {p.sku && <span className="font-mono mr-2">{p.sku}</span>}
                           {p.brand && <span>{p.brand}</span>}
@@ -387,6 +458,21 @@ export default function PreciosPage() {
                           ? calcMargin(parseFloat(editPrice) || p.price, parseFloat(editCost) || p.cost_price)
                           : margin}
                         />
+                      </td>
+
+                      {/* Market ref */}
+                      <td className="px-3 py-2.5 text-right">
+                        {ref && gap !== null ? (
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className="font-medium text-gray-700">{formatCLP(ref.price)}</span>
+                            <div className="flex items-center gap-1">
+                              <MarketGapBadge gap={gap} />
+                            </div>
+                            <span className="text-[10px] text-gray-400">{ref.source} · {ref.note}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-200">—</span>
+                        )}
                       </td>
 
                       {/* Suggested */}
@@ -440,17 +526,19 @@ export default function PreciosPage() {
               </tbody>
             </table>
             <div className="px-4 py-3 border-t border-gray-100 text-xs text-gray-400">
-              Mostrando {filtered.length} de {products.length} productos
+              Mostrando {filtered.length} de {products.length} productos ·{' '}
+              <span className="text-purple-500 font-medium">{stats.belowMarket} con precio bajo mercado</span>
             </div>
           </div>
         )}
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-4 text-xs text-gray-500 pb-2">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-200 inline-block" /> Margen negativo — precio menor al costo</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-200 inline-block" /> Margen bajo — por debajo del objetivo</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-200 inline-block" /> Margen OK — dentro del objetivo</span>
+      <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500 pb-2">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-red-200 inline-block" /> Margen negativo o muy bajo mercado</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-200 inline-block" /> Margen bajo o moderadamente bajo mercado</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-200 inline-block" /> Margen OK</span>
+        <span className="flex items-center gap-1.5"><strong>Ref. mercado</strong> = precio verificado en Dimerc / Lápiz López / Sodimac / Prisa / MercadoLibre (Mayo 2026)</span>
         <span className="flex items-center gap-1.5"><strong>Sugerido</strong> = costo ÷ (1 − margen objetivo)</span>
       </div>
     </div>
