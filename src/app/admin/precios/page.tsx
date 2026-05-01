@@ -18,26 +18,55 @@ type MarginFilter = 'all' | 'negative' | 'low' | 'ok' | 'no_cost' | 'below_marke
 // Precios de referencia de mercado (Dimerc, Lápiz López, Sodimac, Prisa, MercadoLibre)
 // Última actualización: Mayo 2026
 const MARKET_REFS: { match: string; price: number; source: string; note: string }[] = [
-  { match: 'cartulina española 50x65',        price: 360,   source: 'Mayorista Nac.',  note: 'por pliego' },
-  { match: 'bolsa camiseta blanca 28x35',      price: 1090,  source: 'MercadoLibre',   note: 'por 100u' },
-  { match: 'impeke 50x70',                     price: 850,   source: 'Est. mercado',   note: 'por 10u' },
-  { match: 'impeke 70x90',                     price: 1650,  source: 'MercadoLibre',   note: 'por 10u' },
-  { match: 'tecnoroll jumbo',                  price: 9200,  source: 'Dimerc',         note: 'pack 2 rollos' },
-  { match: 'memphis standard',                 price: 1600,  source: 'Dimerc',         note: 'por unidad' },
-  { match: 'igenix tradicional',               price: 2990,  source: 'MercadoLibre',   note: '360cc' },
-  { match: 'rollo aluminio 30',                price: 7490,  source: 'Alba Hogar',     note: '100m' },
-  { match: 'examglove',                        price: 3200,  source: 'Sodimac',        note: 'caja 100u' },
-  { match: 'ecoindustrial',                    price: 6990,  source: 'MercadoLibre',   note: 'bidón 5L' },
-  { match: '76x76 100h pop',                   price: 2990,  source: 'MercadoLibre',   note: 'pack 5 col.' },
-  { match: 'isofit metalica',                  price: 4500,  source: 'Est. mercado',   note: 'unidad' },
-  { match: 'bic cristal punta mediana 1.0 mm azul', price: 300, source: 'Comercial La Papa', note: 'unidad' },
-  { match: 'reprograf carta 500',              price: 4700,  source: 'Sum. Print',     note: 'resma' },
-  { match: 'nescafe fin selecc',               price: 8990,  source: 'Jumbo',          note: '200g' },
-  { match: 'rapid 23/12',                      price: 4500,  source: 'Est. Dimerc',    note: '1000u' },
-  { match: 'purificada natural sin gas',        price: 750,   source: 'Supermercado',  note: 'botella 500cc' },
-  { match: 'purificada natural con gas',        price: 890,   source: 'Supermercado',  note: 'botella 500cc' },
-  { match: 'papel fotocopia oficio 75 gr executive', price: 3500, source: 'Est. mercado', note: 'resma' },
-  { match: 'papel fotocopia multiproposi',      price: 3800,  source: 'Dimerc',        note: 'resma carta' },
+  // --- Limpieza / Aseo ---
+  { match: 'cartulina española 50x65',              price: 360,    source: 'Mayorista Nac.',     note: 'por pliego' },
+  { match: 'bolsa camiseta blanca 28x35',            price: 1090,   source: 'MercadoLibre',      note: 'por 100u' },
+  { match: 'impeke 50x70',                           price: 850,    source: 'Est. mercado',      note: 'por 10u' },
+  { match: 'impeke 70x90',                           price: 1650,   source: 'MercadoLibre',      note: 'por 10u' },
+  { match: 'tecnoroll jumbo',                        price: 9200,   source: 'Dimerc',            note: 'pack 2 rollos' },
+  { match: 'igenix tradicional',                     price: 2990,   source: 'MercadoLibre',      note: '360cc' },
+  { match: 'rollo aluminio 30',                      price: 7490,   source: 'Alba Hogar',        note: '100m' },
+  { match: 'examglove',                              price: 3200,   source: 'Sodimac',           note: 'caja 100u' },
+  { match: 'ecoindustrial',                          price: 6990,   source: 'MercadoLibre',      note: 'bidón 5L' },
+
+  // --- Oficina ---
+  { match: 'memphis standard',                       price: 1600,   source: 'Dimerc',            note: 'por unidad' },
+  { match: 'rapid 23/12',                            price: 4500,   source: 'Est. Dimerc',       note: '1000u' },
+  { match: 'corchetes swingline',                    price: 4990,   source: 'ShopBox',           note: '1000u SF-13' },
+  { match: 'masking',                                price: 1990,   source: 'MercadoLibre',      note: '24mm×40m' },
+  { match: 'perforadora',                            price: 8500,   source: 'Est. mercado',      note: 'metálica ~30h' },
+  { match: 'punta redonda 33 mm acero cromado',      price: 1290,   source: 'MercadoLibre',      note: 'caja 100u' },
+  { match: 'isofit metalica',                        price: 4500,   source: 'Est. mercado',      note: 'unidad' },
+
+  // --- Papelería ---
+  { match: '76x76 100h pop',                         price: 2990,   source: 'MercadoLibre',      note: 'pack 5 col.' },
+  { match: 'reprograf carta 500',                    price: 4700,   source: 'Sum. Print',        note: 'resma' },
+  { match: 'fotocopia prisa carta',                  price: 7990,   source: 'Falabella',         note: 'resma 500h' },
+  { match: 'papel fotocopia oficio 75 gr executive', price: 3500,   source: 'Est. mercado',      note: 'resma' },
+  { match: 'papel fotocopia multiproposi',           price: 3800,   source: 'Dimerc',            note: 'resma carta' },
+  { match: 'block colon universit',                  price: 3890,   source: 'MercadoLibre',      note: '80h espiral' },
+  { match: 'sobre americano teknofas',               price: 92,     source: 'MercadoLibre',      note: 'por unidad' },
+  { match: 'archivador plastificado torre azul',     price: 2000,   source: 'Est. mercado',      note: 'oficio caccoclip' },
+  { match: 'archivador plastificado auca',           price: 1800,   source: 'Est. mercado',      note: 'oficio plastificado' },
+
+  // --- Escritura ---
+  { match: 'bic cristal punta mediana 1.0 mm azul',  price: 300,    source: 'Comercial La Papa', note: 'unidad' },
+  { match: '0,7mm mix colores torre',                price: 1200,   source: 'Est. mercado',      note: 'portaminas unidad' },
+  { match: 'epson t544',                             price: 32900,  source: 'MercadoLibre',      note: 'pack 4 colores' },
+
+  // --- Tecnología ---
+  { match: '151a negro',                             price: 79990,  source: 'MercadoLibre',      note: 'tóner original' },
+  { match: 'calculadora escritorio 12',              price: 6500,   source: 'Est. mercado',      note: '12 dígitos' },
+  { match: 'pendrive maxell',                        price: 4290,   source: 'MercadoLibre',      note: '8GB USB 2.0' },
+
+  // --- Alimentos ---
+  { match: 'nescafe fin selecc',                     price: 8990,   source: 'Jumbo',             note: '200g' },
+  { match: 'purificada natural sin gas',             price: 750,    source: 'Supermercado',      note: 'botella 500cc' },
+  { match: 'purificada natural con gas',             price: 890,    source: 'Supermercado',      note: 'botella 500cc' },
+
+  // --- Desechables ---
+  { match: 'polipapel una capa blanco',              price: 2800,   source: 'Est. mercado',      note: 'pack 50u' },
+  { match: 'vaso 12oz pet',                          price: 2500,   source: 'Est. mercado',      note: 'pack 50u' },
 ];
 
 function getMarketRef(name: string) {
