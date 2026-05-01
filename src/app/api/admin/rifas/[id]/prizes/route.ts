@@ -14,7 +14,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const supabase = createAdminClient();
 
-  // If from inventory: reserve stock (decrement stock_ocoa by 1)
+  // Fix 2: track which stock field was decremented so we can restore it on failure
+  let stockField: 'stock_ocoa' | 'stock_local21' | null = null;
+  let originalStockValue = 0;
+
   if (product_id) {
     const { data: product } = await supabase
       .from('products')
@@ -25,10 +28,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const available = (product.stock_ocoa || 0) + (product.stock_local21 || 0);
     if (available < 1) return NextResponse.json({ error: 'Sin stock disponible para reservar' }, { status: 400 });
 
-    // Decrement from ocoa first, then local21
     if ((product.stock_ocoa || 0) >= 1) {
+      stockField = 'stock_ocoa';
+      originalStockValue = product.stock_ocoa;
       await supabase.from('products').update({ stock_ocoa: product.stock_ocoa - 1 }).eq('id', product_id);
     } else {
+      stockField = 'stock_local21';
+      originalStockValue = product.stock_local21;
       await supabase.from('products').update({ stock_local21: product.stock_local21 - 1 }).eq('id', product_id);
     }
   }
@@ -46,6 +52,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     .select('*, product:products(id,name,sku,image_url)')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // Fix 2: restore stock if prize insert failed
+    if (stockField && product_id) {
+      await supabase.from('products').update({ [stockField]: originalStockValue }).eq('id', product_id);
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   return NextResponse.json({ prize: data }, { status: 201 });
 }
