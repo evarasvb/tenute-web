@@ -36,17 +36,45 @@ function normalizeProductPayload(input: Record<string, unknown>) {
     payload.barcode = barcode.length > 0 ? barcode : null;
   }
 
+  const currentMeta = parseMetadata(payload.metadata);
+  if (payload.competitor_price != null) {
+    const competitorRaw = Number(payload.competitor_price);
+    currentMeta.competitor_price = Number.isFinite(competitorRaw) && competitorRaw > 0 ? competitorRaw : undefined;
+  }
+  if (typeof payload.competitor_source === 'string') {
+    const source = payload.competitor_source.trim();
+    currentMeta.competitor_source = source || undefined;
+  }
+  if (typeof payload.competitor_url === 'string') {
+    const competitorUrl = payload.competitor_url.trim();
+    currentMeta.competitor_url = competitorUrl || undefined;
+  }
+  if (payload.competitor_updated_at === null || typeof payload.competitor_updated_at === 'string') {
+    const checked = typeof payload.competitor_updated_at === 'string' ? payload.competitor_updated_at.trim() : '';
+    currentMeta.competitor_updated_at = checked || undefined;
+  }
+  payload.metadata = currentMeta;
+  delete payload.competitor_price;
+  delete payload.competitor_source;
+  delete payload.competitor_url;
+  delete payload.competitor_updated_at;
+
   return payload;
 }
 
 function normalizeProductRow(row: Record<string, unknown>) {
   const stockLocal21 = Number(row.stock_local21 ?? row.stock_local ?? 0) || 0;
   const barcode = typeof row.barcode === 'string' ? row.barcode : null;
+  const metadata = parseMetadata(row.metadata);
   return {
     ...row,
     stock_local21: stockLocal21,
     stock_local: stockLocal21,
     barcode,
+    competitor_price: metadata.competitor_price ?? null,
+    competitor_source: metadata.competitor_source ?? null,
+    competitor_url: metadata.competitor_url ?? null,
+    competitor_updated_at: metadata.competitor_updated_at ?? null,
   };
 }
 
@@ -88,7 +116,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
   delete updateData.stock_local;
 
-  if (typeof updateData.stock_ocoa === 'number' || typeof updateData.stock_local21 === 'number') {
+  const metadataNeedsRebuild =
+    typeof updateData.stock_ocoa === 'number' ||
+    typeof updateData.stock_local21 === 'number' ||
+    Object.prototype.hasOwnProperty.call(updateData, 'metadata');
+
+  if (metadataNeedsRebuild) {
     const { data: currentProduct } = await supabase
       .from('products')
       .select('stock_ocoa, stock_local21, stock, metadata')
@@ -99,6 +132,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       ? getWarehouseStock(currentProduct as unknown as Record<string, unknown>)
       : { ocoa: 0, local21: 0 };
 
+    const currentMeta = parseMetadata(currentProduct?.metadata);
+    const bodyMeta = parseMetadata(updateData.metadata);
     const nextOcoa = typeof updateData.stock_ocoa === 'number' ? updateData.stock_ocoa : currentStock.ocoa;
     const nextLocal21 = typeof updateData.stock_local21 === 'number' ? updateData.stock_local21 : currentStock.local21;
 
@@ -106,11 +141,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     updateData.stock_local21 = nextLocal21;
     updateData.stock = Math.max(0, nextOcoa + nextLocal21);
 
-    const currentMeta = parseMetadata(currentProduct?.metadata);
-    const bodyMeta = parseMetadata(updateData.metadata);
     updateData.metadata = buildMetadata({
       additional_images: bodyMeta.additional_images ?? currentMeta.additional_images ?? [],
       video_url: bodyMeta.video_url ?? currentMeta.video_url,
+      competitor_price: bodyMeta.competitor_price ?? currentMeta.competitor_price,
+      competitor_source: bodyMeta.competitor_source ?? currentMeta.competitor_source,
+      competitor_url: bodyMeta.competitor_url ?? currentMeta.competitor_url,
+      competitor_updated_at: bodyMeta.competitor_updated_at ?? currentMeta.competitor_updated_at,
       warehouse_stock: {
         ocoa: nextOcoa,
         local21: nextLocal21,

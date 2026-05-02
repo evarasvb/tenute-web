@@ -14,6 +14,13 @@ export interface ProductMetadata {
     ocoa: number;
     local21: number;
   };
+  competitor_price?: number;
+  competitor_source?: string;
+  competitor_url?: string;
+  competitor_updated_at?: string;
+  // Legacy keys kept for backward compatibility with older metadata payloads.
+  competition_price?: number;
+  competition_reference?: string;
 }
 
 export interface Product {

@@ -20,6 +20,10 @@ interface Product {
   sku: string;
   barcode: string | null;
   price: number;
+  competitor_price: number | null;
+  competitor_source: string | null;
+  competitor_url: string | null;
+  competitor_updated_at: string | null;
   cost_price: number;
   stock: number;
   stock_ocoa: number;
@@ -48,6 +52,29 @@ function marginColor(pct: number | null) {
   return 'text-green-600 font-semibold';
 }
 
+function getCompetitorGap(product: Product) {
+  if (!product.competitor_price || product.competitor_price <= 0) return null;
+  const gap = Number(product.price || 0) - Number(product.competitor_price || 0);
+  const percent = (gap / product.competitor_price) * 100;
+  return { gap, percent };
+}
+
+function getCompetitionAlert(product: Product) {
+  const gap = getCompetitorGap(product);
+  if (!gap) return null;
+
+  if (gap.percent >= 20) {
+    return { text: 'Muy arriba competencia', className: 'bg-red-100 text-red-700' };
+  }
+  if (gap.percent >= 8) {
+    return { text: 'Sobre competencia', className: 'bg-orange-100 text-orange-700' };
+  }
+  if (gap.percent <= -15) {
+    return { text: 'Muy bajo vs mercado', className: 'bg-yellow-100 text-yellow-700' };
+  }
+  return { text: 'Competitivo', className: 'bg-green-100 text-green-700' };
+}
+
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -70,6 +97,8 @@ export default function AdminProductsPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [competitionSavingId, setCompetitionSavingId] = useState<string | null>(null);
+  const [competitionDrafts, setCompetitionDrafts] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -147,14 +176,56 @@ export default function AdminProductsPage() {
         setTimeout(() => setToggleError(null), 4000);
       }
     } catch {
-      setToggleError('Error de conexiÃ³n al cambiar estado');
+      setToggleError('Error de conexión al cambiar estado');
       setTimeout(() => setToggleError(null), 4000);
     }
     setTogglingId(null);
   }
 
+  async function handleSaveCompetitionPrice(product: Product) {
+    const draft = competitionDrafts[product.id];
+    const parsed = Number(draft);
+    if (!draft || !Number.isFinite(parsed) || parsed <= 0) {
+      setToggleError('Precio competencia inválido');
+      setTimeout(() => setToggleError(null), 3500);
+      return;
+    }
+
+    setCompetitionSavingId(product.id);
+    setToggleError(null);
+    try {
+      const res = await fetch(`/api/admin/products/${product.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          competitor_price: parsed,
+          competitor_updated_at: new Date().toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo guardar precio competencia');
+
+      setProducts((prev) =>
+        prev.map((item) =>
+          item.id === product.id
+            ? {
+                ...item,
+                competitor_price: parsed,
+                competitor_updated_at: new Date().toISOString(),
+              }
+            : item
+        )
+      );
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : 'Error guardando precio competencia');
+      setTimeout(() => setToggleError(null), 3500);
+    } finally {
+      setCompetitionSavingId(null);
+    }
+  }
+
   async function handleBulkActive(active: boolean) {
-    if (!confirm(active ? 'Â¿Activar TODOS los productos visibles?' : 'Â¿Desactivar TODOS los productos visibles?')) return;
+    if (!confirm(active ? '¿Activar TODOS los productos visibles?' : '¿Desactivar TODOS los productos visibles?')) return;
     setBulkLoading(true);
     setToggleError(null);
     try {
@@ -172,7 +243,7 @@ export default function AdminProductsPage() {
         setTimeout(() => setToggleError(null), 4000);
       }
     } catch {
-      setToggleError('Error de conexiÃ³n');
+      setToggleError('Error de conexión');
       setTimeout(() => setToggleError(null), 4000);
     }
     setBulkLoading(false);
@@ -289,6 +360,18 @@ export default function AdminProductsPage() {
     setActiveFilter(''); setCostMin(''); setCostMax(''); setMarginMin(''); setMarginMax(''); setPage(1);
   }
 
+  useEffect(() => {
+    setCompetitionDrafts((prev) => {
+      const next = { ...prev };
+      for (const p of products) {
+        if (next[p.id] == null) {
+          next[p.id] = p.competitor_price ? String(p.competitor_price) : '';
+        }
+      }
+      return next;
+    });
+  }, [products]);
+
   const totalPages = Math.ceil(total / limit);
   function SortIcon({ col }: { col: string }) {
     if (sortBy !== col) return <span className="text-gray-300 ml-1">â</span>;
@@ -370,18 +453,18 @@ export default function AdminProductsPage() {
           <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Filtrar por:</span>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-500 whitespace-nowrap">Costo $</span>
-            <input type="number" placeholder="MÃ­n" value={costMin} onChange={e => { setCostMin(e.target.value); setPage(1); }}
+            <input type="number" placeholder="Mín" value={costMin} onChange={e => { setCostMin(e.target.value); setPage(1); }}
               className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <span className="text-gray-300">â</span>
-            <input type="number" placeholder="MÃ¡x" value={costMax} onChange={e => { setCostMax(e.target.value); setPage(1); }}
+            <input type="number" placeholder="Máx" value={costMax} onChange={e => { setCostMax(e.target.value); setPage(1); }}
               className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-500 whitespace-nowrap">Margen %</span>
-            <input type="number" placeholder="MÃ­n" value={marginMin} onChange={e => { setMarginMin(e.target.value); setPage(1); }}
+            <input type="number" placeholder="Mín" value={marginMin} onChange={e => { setMarginMin(e.target.value); setPage(1); }}
               className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <span className="text-gray-300">â</span>
-            <input type="number" placeholder="MÃ¡x" value={marginMax} onChange={e => { setMarginMax(e.target.value); setPage(1); }}
+            <input type="number" placeholder="Máx" value={marginMax} onChange={e => { setMarginMax(e.target.value); setPage(1); }}
               className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           {(search || category || brand || hasImage || activeFilter || costMin || costMax || marginMin || marginMax) && (
@@ -402,28 +485,33 @@ export default function AdminProductsPage() {
                 <th className="px-3 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('price')}>Precio <SortIcon col="price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell cursor-pointer" onClick={() => handleSort('cost_price')}>Costo <SortIcon col="cost_price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Margen</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Competencia</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Diff $</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-500 hidden xl:table-cell">Alerta</th>
                 <th className="px-3 py-3 text-center font-medium text-blue-500 hidden xl:table-cell">Ocoa</th>
                 <th className="px-3 py-3 text-center font-medium text-purple-500 hidden xl:table-cell">Local 21</th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('stock')}>Total <SortIcon col="stock" /></th>
                 <th className="px-3 py-3 text-center font-medium text-gray-500 w-20">Estado</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-500 w-20">AcciÃ³n</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-500 w-20">Acción</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100 animate-pulse">
-                    {Array.from({ length: 12 }).map((__, j) => (
+                    {Array.from({ length: 15 }).map((__, j) => (
                       <td key={j} className="px-3 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : products.length === 0 ? (
-                <tr><td colSpan={12} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
+                <tr><td colSpan={15} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
               ) : (
                 products.map(p => {
                   const margin = calcMargin(p.price, p.cost_price);
                   const totalStock = (p.stock_ocoa || 0) + (p.stock_local21 || 0) || p.stock || 0;
+                  const competition = getCompetitorGap(p);
+                  const competitionAlert = getCompetitionAlert(p);
                   return (
                     <tr key={p.id} className={'border-b border-gray-100 hover:bg-gray-50 transition-colors' + (!p.active ? ' opacity-50' : '')}>
                       <td className="px-3 py-2">
@@ -445,6 +533,55 @@ export default function AdminProductsPage() {
                       <td className="px-3 py-2 text-right text-gray-500 hidden lg:table-cell">{p.cost_price ? formatCLP(p.cost_price) : <span className="text-gray-300">â</span>}</td>
                       <td className={'px-3 py-2 text-right hidden lg:table-cell ' + marginColor(margin)}>
                         {margin !== null ? margin.toFixed(1) + '%' : <span className="text-gray-300">â</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right hidden lg:table-cell">
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={competitionDrafts[p.id] ?? ''}
+                            onChange={(e) =>
+                              setCompetitionDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
+                            }
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-xs text-right"
+                            placeholder="0"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSaveCompetitionPrice(p)}
+                            disabled={competitionSavingId === p.id}
+                            className="px-2 py-1 text-xs border border-blue-200 text-blue-700 rounded hover:bg-blue-50 disabled:opacity-50"
+                          >
+                            {competitionSavingId === p.id ? '...' : 'OK'}
+                          </button>
+                          {p.competitor_source ? (
+                            <span
+                              className="hidden xl:inline text-[10px] text-gray-500 max-w-[90px] truncate"
+                              title={p.competitor_source}
+                            >
+                              {p.competitor_source}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right hidden lg:table-cell">
+                        {competition ? (
+                          <span className={competition.gap > 0 ? 'text-red-600 font-semibold' : 'text-green-700 font-semibold'}>
+                            {competition.gap > 0 ? '+' : ''}
+                            {Math.round(competition.gap).toLocaleString('es-CL')}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">â</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 hidden xl:table-cell">
+                        {competitionAlert ? (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${competitionAlert.className}`}>
+                            {competitionAlert.text}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">Sin referencia</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-center hidden xl:table-cell">
                         <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">{p.stock_ocoa || 0}</span>
@@ -502,7 +639,7 @@ export default function AdminProductsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full">
             <h3 className="text-lg font-semibold mb-2">Eliminar producto</h3>
-            <p className="text-sm text-gray-500 mb-4">Â¿EstÃ¡s seguro? Esta acciÃ³n no se puede deshacer.</p>
+            <p className="text-sm text-gray-500 mb-4">¿Estás seguro? Esta acción no se puede deshacer.</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
               <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Eliminar</button>

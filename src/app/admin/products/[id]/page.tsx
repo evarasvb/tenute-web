@@ -12,6 +12,11 @@ interface Category {
   name: string;
 }
 
+interface CompetitionAlert {
+  level: 'critical' | 'warning' | 'ok' | 'none';
+  message: string;
+}
+
 const EMPTY_PRODUCT = {
   name: '',
   slug: '',
@@ -30,6 +35,10 @@ const EMPTY_PRODUCT = {
   format: '',
   content_info: '',
   cost_price: 0,
+  competitor_price: 0,
+  competitor_source: '',
+  competitor_url: '',
+  competitor_updated_at: '',
   is_featured: false,
   is_offer: false,
   is_auction: false,
@@ -41,6 +50,31 @@ const EMPTY_PRODUCT = {
 
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+}
+
+function getCompetitionGap(price: number, competitorPrice: number) {
+  if (!competitorPrice || competitorPrice <= 0) return null;
+  const gap = Number(price || 0) - Number(competitorPrice || 0);
+  const percent = competitorPrice === 0 ? 0 : (gap / competitorPrice) * 100;
+  return { gap, percent };
+}
+
+function getCompetitionAlert(price: number, competitorPrice: number): CompetitionAlert {
+  if (!competitorPrice || competitorPrice <= 0) {
+    return { level: 'none', message: 'Sin precio de competencia' };
+  }
+  const gap = getCompetitionGap(price, competitorPrice);
+  if (!gap) return { level: 'none', message: 'Sin precio de competencia' };
+  if (gap.percent >= 20) return { level: 'critical', message: 'Muy arriba de competencia' };
+  if (gap.percent >= 8) return { level: 'warning', message: 'Sobre competencia' };
+  return { level: 'ok', message: 'Competitivo' };
+}
+
+function competitionAlertClass(level: CompetitionAlert['level']) {
+  if (level === 'critical') return 'text-red-700 bg-red-50 border-red-200';
+  if (level === 'warning') return 'text-orange-700 bg-orange-50 border-orange-200';
+  if (level === 'ok') return 'text-green-700 bg-green-50 border-green-200';
+  return 'text-gray-600 bg-gray-50 border-gray-200';
 }
 
 export default function ProductEditorPage() {
@@ -110,6 +144,10 @@ export default function ProductEditorPage() {
             format: data.format || '',
             content_info: data.content_info || '',
             cost_price: data.cost_price || 0,
+            competitor_price: data.competitor_price || 0,
+            competitor_source: data.competitor_source || '',
+            competitor_url: data.competitor_url || '',
+            competitor_updated_at: data.competitor_updated_at || '',
             is_featured: data.is_featured || false,
             is_offer: data.is_offer || false,
             is_auction: data.is_auction || false,
@@ -179,6 +217,10 @@ export default function ProductEditorPage() {
       format: product.format || null,
       content_info: product.content_info || null,
       cost_price: Number(product.cost_price) || null,
+      competitor_price: Number(product.competitor_price) || null,
+      competitor_source: product.competitor_source || null,
+      competitor_url: product.competitor_url || null,
+      competitor_updated_at: product.competitor_updated_at || null,
       is_featured: product.is_featured,
       is_offer: product.is_offer,
       is_auction: product.is_auction,
@@ -357,8 +399,10 @@ export default function ProductEditorPage() {
   }
 
   const margin = product.cost_price > 0
-    ? ((Number(product.price) - Number(product.cost_price)) / Number(product.cost_price) * 100).toFixed(1)
+    ? ((Number(product.price) - Number(product.cost_price)) / Number(product.price) * 100).toFixed(1)
     : null;
+  const competitionGap = getCompetitionGap(Number(product.price), Number(product.competitor_price));
+  const competitionAlert = getCompetitionAlert(Number(product.price), Number(product.competitor_price));
 
   if (loading) {
     return (
@@ -655,6 +699,23 @@ export default function ProductEditorPage() {
               <input type="number" value={product.cost_price} onChange={(e) => handleChange('cost_price', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio competencia</label>
+              <input type="number" value={product.competitor_price} onChange={(e) => handleChange('competitor_price', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Referencia competencia</label>
+              <input type="text" value={product.competitor_source} onChange={(e) => handleChange('competitor_source', e.target.value)}
+                placeholder="Falabella, Sodimac, etc."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL competencia</label>
+              <input type="text" value={product.competitor_url} onChange={(e) => handleChange('competitor_url', e.target.value)}
+                placeholder="https://..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
           </div>
           {margin !== null && (
             <p className="text-sm mt-2">
@@ -664,6 +725,20 @@ export default function ProductEditorPage() {
               </span>
             </p>
           )}
+          <div className={`mt-3 border rounded-lg px-3 py-2 text-sm ${competitionAlertClass(competitionAlert.level)}`}>
+            <div className="font-medium">Riesgo competencia: {competitionAlert.message}</div>
+            {competitionGap && (
+              <div className="text-xs mt-1">
+                Diferencia: {competitionGap.gap > 0 ? '+' : ''}
+                {Math.round(competitionGap.gap).toLocaleString('es-CL')} CLP ({competitionGap.percent.toFixed(1)}%)
+              </div>
+            )}
+            {product.competitor_updated_at && (
+              <div className="text-xs mt-1">
+                Última actualización: {new Date(product.competitor_updated_at).toLocaleString('es-CL')}
+              </div>
+            )}
+          </div>
         </div>
 
         <div>
