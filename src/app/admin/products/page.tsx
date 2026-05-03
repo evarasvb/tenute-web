@@ -7,7 +7,7 @@ import Image from 'next/image';
 interface EanSuggestion {
   productId: string;
   productName: string;
-  currentBarcode: string | null;
+  currentBarcode: string | null
   suggestedEan: string;
   confidence: 'alta' | 'media' | 'baja';
   score: number;
@@ -62,8 +62,8 @@ export default function AdminProductsPage() {
   const [costMax, setCostMax] = useState('');
   const [marginMin, setMarginMin] = useState('');
   const [marginMax, setMarginMax] = useState('');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState('price');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
