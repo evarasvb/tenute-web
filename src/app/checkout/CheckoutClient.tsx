@@ -36,7 +36,7 @@ interface ShippingInfo {
   region: string;
   notes: string;
   cost: number;
-  estimatedDays: string;
+  estimatedDays: string | undefined;
 }
 
 const STEPS = ['Datos', 'Envío', 'Resumen', 'Confirmación'];

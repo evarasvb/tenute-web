@@ -548,14 +548,14 @@ export default function ProductEditorPage() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-                    <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Codigo de barras</label>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Código de barras</label>
             <input
               type="text"
               value={product.barcode}
               onChange={(e) => handleChange('barcode', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="EAN-13, UPC, etc."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <div className="mt-2 flex items-center gap-2">
               <button
@@ -594,16 +594,6 @@ export default function ProductEditorPage() {
                 ))}
               </div>
             )}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Barcode</label>
-            <input
-              type="text"
-              value={product.barcode}
-              onChange={(e) => handleChange('barcode', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="EAN/UPC/CODE128"
-            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Marca</label>

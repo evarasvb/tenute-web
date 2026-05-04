@@ -17,11 +17,14 @@ export async function POST(request: Request) {
     // mercadopago.configure({ access_token: process.env.MERCADOPAGO_ACCESS_TOKEN });
     // const preference = await mercadopago.preferences.create({ ... });
 
-    return NextResponse.json({
-      message: 'Integración con MercadoPago próximamente disponible',
-      status: 'pending_integration',
-      items_received: items.length,
-    });
+    return NextResponse.json(
+      {
+        error: 'MercadoPago no está habilitado actualmente. Usa pago con tarjeta vía Flow.',
+        status: 'disabled',
+        items_received: items.length,
+      },
+      { status: 503 }
+    );
   } catch {
     return NextResponse.json(
       { error: 'Error al procesar la solicitud' },
