@@ -5,7 +5,38 @@ export async function GET() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from('raffles')
-    .select('id, title, slug, description, hero_image_url, social_hashtag, draw_place, draw_date, number_price, total_numbers, available_numbers, featured_products, status')
+    .select(
+      `
+      id,
+      title,
+      slug,
+      description,
+      hero_image_url,
+      promo_headline,
+      hashtag,
+      draw_method,
+      draw_place,
+      draw_date,
+      min_sold_to_draw,
+      status,
+      raffle_prizes(
+        id,
+        position,
+        title,
+        description,
+        declared_value,
+        quantity
+      ),
+      raffle_media(
+        id,
+        prize_id,
+        kind,
+        url,
+        alt,
+        sort_order
+      )
+    `
+    )
     .eq('status', 'published')
     .order('created_at', { ascending: false });
 

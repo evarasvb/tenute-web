@@ -7,9 +7,30 @@ import type { ProductMetadata } from '@/types';
 export function parseMetadata(raw: unknown): ProductMetadata {
   if (!raw || typeof raw !== 'object') return {};
   const m = raw as Record<string, unknown>;
+  const competitorPrice =
+    typeof m.competitor_price === 'number'
+      ? m.competitor_price
+      : typeof m.competitor_price === 'string'
+      ? Number(m.competitor_price)
+      : undefined;
+  const competitorSource =
+    typeof m.competitor_source === 'string' && m.competitor_source.trim()
+      ? m.competitor_source.trim()
+      : undefined;
+  const competitorUpdatedAt =
+    typeof m.competitor_updated_at === 'string' && m.competitor_updated_at.trim()
+      ? m.competitor_updated_at.trim()
+      : undefined;
+  const competitorUrl =
+    typeof m.competitor_url === 'string' && m.competitor_url.trim() ? m.competitor_url.trim() : undefined;
   return {
     additional_images: Array.isArray(m.additional_images) ? m.additional_images : [],
     video_url: typeof m.video_url === 'string' ? m.video_url : undefined,
+    competitor_price:
+      typeof competitorPrice === 'number' && Number.isFinite(competitorPrice) ? competitorPrice : undefined,
+    competitor_source: competitorSource,
+    competitor_url: competitorUrl,
+    competitor_updated_at: competitorUpdatedAt,
     warehouse_stock: m.warehouse_stock && typeof m.warehouse_stock === 'object'
       ? {
           ocoa: Number((m.warehouse_stock as Record<string, unknown>).ocoa) || 0,
@@ -69,11 +90,35 @@ export function isProductActive(product: Record<string, unknown>): boolean {
 export function buildMetadata(opts: {
   additional_images?: string[];
   video_url?: string;
+  competitor_price?: number;
+  competitor_source?: string;
+  competitor_url?: string;
+  competitor_updated_at?: string;
   warehouse_stock?: { ocoa: number; local21: number };
 }): ProductMetadata {
+  const competitorPrice =
+    typeof opts.competitor_price === 'number' && Number.isFinite(opts.competitor_price)
+      ? opts.competitor_price
+      : undefined;
+  const competitorSource =
+    typeof opts.competitor_source === 'string' && opts.competitor_source.trim()
+      ? opts.competitor_source.trim()
+      : undefined;
+  const competitorUrl =
+    typeof opts.competitor_url === 'string' && opts.competitor_url.trim()
+      ? opts.competitor_url.trim()
+      : undefined;
+  const competitorUpdatedAt =
+    typeof opts.competitor_updated_at === 'string' && opts.competitor_updated_at.trim()
+      ? opts.competitor_updated_at.trim()
+      : undefined;
   return {
     additional_images: opts.additional_images?.length ? opts.additional_images : [],
     video_url: opts.video_url || undefined,
+    competitor_price: competitorPrice,
+    competitor_source: competitorSource,
+    competitor_url: competitorUrl,
+    competitor_updated_at: competitorUpdatedAt,
     warehouse_stock: opts.warehouse_stock,
   };
 }

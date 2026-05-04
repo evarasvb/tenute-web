@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { buildMetadata, parseMetadata } from '@/lib/product-metadata';
 import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 function checkAuth(request: NextRequest) {
@@ -37,18 +38,54 @@ function normalizeProductPayload(input: Record<string, unknown>) {
     payload.barcode = barcode.length > 0 ? barcode : null;
   }
 
+  const metadata = parseMetadata(payload.metadata);
+  if (typeof payload.competitor_price === 'number') {
+    metadata.competitor_price = Number.isFinite(payload.competitor_price) ? Math.max(0, payload.competitor_price) : undefined;
+    delete payload.competitor_price;
+  }
+  if (typeof payload.competitor_source === 'string') {
+    const source = payload.competitor_source.trim();
+    metadata.competitor_source = source || undefined;
+    delete payload.competitor_source;
+  }
+  if (typeof payload.competitor_url === 'string') {
+    const url = payload.competitor_url.trim();
+    metadata.competitor_url = url || undefined;
+    delete payload.competitor_url;
+  }
+  if (payload.competitor_updated_at === null || typeof payload.competitor_updated_at === 'string') {
+    metadata.competitor_updated_at = typeof payload.competitor_updated_at === 'string' && payload.competitor_updated_at.trim()
+      ? payload.competitor_updated_at.trim()
+      : undefined;
+    delete payload.competitor_updated_at;
+  }
+  payload.metadata = buildMetadata({
+    additional_images: metadata.additional_images || [],
+    video_url: metadata.video_url,
+    warehouse_stock: metadata.warehouse_stock,
+    competitor_price: metadata.competitor_price,
+    competitor_source: metadata.competitor_source,
+    competitor_url: metadata.competitor_url,
+    competitor_updated_at: metadata.competitor_updated_at,
+  });
+
   return payload;
 }
 
 function normalizeProductRow(row: Record<string, unknown>) {
   const stockLocal21 = Number(row.stock_local21 ?? row.stock_local ?? 0) || 0;
   const barcode = typeof row.barcode === 'string' ? row.barcode : null;
+  const metadata = parseMetadata(row.metadata);
 
   return {
     ...row,
     stock_local21: stockLocal21,
     stock_local: stockLocal21,
     barcode,
+    competitor_price: metadata.competitor_price ?? null,
+    competitor_source: metadata.competitor_source ?? null,
+    competitor_url: metadata.competitor_url ?? null,
+    competitor_updated_at: metadata.competitor_updated_at ?? null,
   };
 }
 
