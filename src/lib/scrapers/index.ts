@@ -6,10 +6,13 @@ export async function scrapeCompetitorPrice(input: {
   url: string;
   selector?: string | null;
   competitorName?: string | null;
+  timeoutMs?: number;
+  userAgent?: string;
 }): Promise<ParsedPriceResult & { finalUrl: string; status: number }> {
   const fetched = await fetchHtmlWithRetries(input.url, {
-    timeoutMs: 10_000,
+    timeoutMs: input.timeoutMs ?? 15_000,
     retries: 2,
+    userAgent: input.userAgent,
   });
 
   const parsed = parsePriceForUrl({
