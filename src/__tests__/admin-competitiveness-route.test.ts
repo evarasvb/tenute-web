@@ -50,6 +50,8 @@ describe('GET /api/admin/competitiveness', () => {
         enMercado: 4,
         bajoMercado: 5,
         sinReferencia: 2,
+        ingresosSobreMercado30d: 120000,
+        ingresosBajoMercado30d: 80000,
       },
       tables: {
         sobreMercado: [],
@@ -65,6 +67,7 @@ describe('GET /api/admin/competitiveness', () => {
     expect(response.status).toBe(200);
     expect(body.kpis.sobreMercado).toBe(3);
     expect(body.kpis.bajoMercado).toBe(5);
+    expect(body.kpis.ingresosSobreMercado30d).toBe(120000);
     expect(body.tables.sobreMercado).toEqual([]);
   });
 });

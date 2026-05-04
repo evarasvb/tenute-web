@@ -8,7 +8,7 @@ import {
   CompetitivenessClassification,
 } from '@/lib/competitiveness-types';
 
-type TabKey = 'sobre' | 'bajo' | 'top';
+type TabKey = 'sobre' | 'bajo';
 
 function formatCLP(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return '—';
@@ -102,6 +102,9 @@ function RowsTable(props: {
   rows: CompetitivenessEntry[];
   includeImpact?: boolean;
   includeUnits?: boolean;
+  includeRanking?: boolean;
+  includeRevenue?: boolean;
+  highlightTopVsMarket?: boolean;
 }) {
   if (props.rows.length === 0) {
     return <div className="px-4 py-10 text-center text-sm text-gray-500">Sin resultados.</div>;
@@ -111,39 +114,61 @@ function RowsTable(props: {
     <table className="w-full text-sm">
       <thead>
         <tr className="bg-green-50 text-left text-xs uppercase tracking-wide text-green-900">
+          {props.includeRanking && <th className="px-3 py-2 text-right">#</th>}
           <th className="px-3 py-2">SKU</th>
           <th className="px-3 py-2">Producto</th>
+          {props.includeUnits && <th className="px-3 py-2 text-right">Unidades 30d</th>}
+          {props.includeRevenue && <th className="px-3 py-2 text-right">Ingresos 30d</th>}
           <th className="px-3 py-2 text-right">Precio nuestro</th>
           <th className="px-3 py-2 text-right">Mediana mercado</th>
           <th className="px-3 py-2 text-right">Dif. $</th>
           <th className="px-3 py-2 text-right">Dif. %</th>
           {props.includeImpact && <th className="px-3 py-2 text-right">Impacto potencial</th>}
-          {props.includeUnits && <th className="px-3 py-2 text-right">Unidades mes</th>}
           <th className="px-3 py-2">Estado</th>
           <th className="px-3 py-2">Acción</th>
         </tr>
       </thead>
       <tbody>
-        {props.rows.map((row) => (
-          <tr key={row.id} className="border-t border-gray-100">
+        {props.rows.map((row) => {
+          const pct = row.diferenciaPct ?? 0;
+          const isHighRisk = props.highlightTopVsMarket && pct > 10;
+          const isOpportunity = props.highlightTopVsMarket && pct < -10;
+          return (
+          <tr
+            key={row.id}
+            className={`border-t border-gray-100 ${
+              isHighRisk ? 'bg-red-50/60' : isOpportunity ? 'bg-green-50/60' : ''
+            }`}
+          >
+            {props.includeRanking && (
+              <td className="px-3 py-2 text-right font-semibold text-gray-700">{row.ranking || '—'}</td>
+            )}
             <td className="px-3 py-2 font-mono text-xs text-gray-700">{row.sku}</td>
             <td className="px-3 py-2 text-gray-900">{row.name}</td>
+            {props.includeUnits && (
+              <td className="px-3 py-2 text-right font-semibold text-gray-900">{row.unidadesVendidasMes || 0}</td>
+            )}
+            {props.includeRevenue && (
+              <td className="px-3 py-2 text-right">{formatCLP(row.ingresos30d ?? null)}</td>
+            )}
             <td className="px-3 py-2 text-right">{formatCLP(row.precioNuestro)}</td>
             <td className="px-3 py-2 text-right">{formatCLP(row.precioMediana)}</td>
             <td className="px-3 py-2 text-right">{formatCLP(row.diferenciaAbs)}</td>
-            <td className="px-3 py-2 text-right">{formatPct(row.diferenciaPct)}</td>
+            <td className={`px-3 py-2 text-right ${isHighRisk ? 'text-red-700 font-semibold' : isOpportunity ? 'text-green-700 font-semibold' : ''}`}>
+              {formatPct(row.diferenciaPct)}
+            </td>
             {props.includeImpact && (
               <td className="px-3 py-2 text-right">{formatCLP(row.impactoPotencial)}</td>
             )}
-            {props.includeUnits && (
-              <td className="px-3 py-2 text-right">{row.unidadesVendidasMes || 0}</td>
-            )}
             <td className="px-3 py-2">
-              <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classificationBadgeClass(row.clasificacion)}`}
-              >
-                {classificationLabel(row.clasificacion)}
-              </span>
+              <div className="flex items-center gap-1">
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classificationBadgeClass(row.clasificacion)}`}
+                >
+                  {classificationLabel(row.clasificacion)}
+                </span>
+                {isOpportunity && <span className="text-sm" title="Oportunidad de subir precio">💰</span>}
+              </div>
             </td>
             <td className="px-3 py-2">
               <Link
@@ -154,7 +179,7 @@ function RowsTable(props: {
               </Link>
             </td>
           </tr>
-        ))}
+        )})}
       </tbody>
     </table>
   );
@@ -218,18 +243,22 @@ export default function CompetitivenessWidget(props: { payload: CompetitivenessP
     downloadCsv(
       'competitividad_top_vendidos_mes.csv',
       [
+        'ranking',
         'sku',
         'nombre',
         'unidades_vendidas_mes',
+        'ingresos_30d',
         'precio_nuestro',
         'precio_mediana',
         'diferencia_abs',
         'diferencia_pct',
       ],
       tables.topVendidos.map((row) => [
+        row.ranking || '',
         row.sku,
         row.name,
         row.unidadesVendidasMes || 0,
+        row.ingresos30d ?? '',
         row.precioNuestro ?? '',
         row.precioMediana ?? '',
         row.diferenciaAbs ?? '',
@@ -308,15 +337,37 @@ export default function CompetitivenessWidget(props: { payload: CompetitivenessP
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-red-200 bg-white p-4">
+          <p className="text-xs uppercase tracking-wide text-red-600">Ingresos 30d en sobre mercado</p>
+          <p className="mt-1 text-2xl font-bold text-red-700">{formatCLP(props.payload.kpis.ingresosSobreMercado30d)}</p>
+        </div>
+        <div className="rounded-xl border border-green-200 bg-white p-4">
+          <p className="text-xs uppercase tracking-wide text-green-700">Ingresos 30d en bajo mercado</p>
+          <p className="mt-1 text-2xl font-bold text-green-700">{formatCLP(props.payload.kpis.ingresosBajoMercado30d)}</p>
+        </div>
+      </div>
+
+      <TableContainer
+        title="Competitividad vs Más Vendidos"
+        subtitle="Top 20 productos por unidades vendidas en los últimos 30 días"
+        onExportCsv={exportTop}
+      >
+        <RowsTable
+          rows={tables.topVendidos}
+          includeRanking
+          includeUnits
+          includeRevenue
+          highlightTopVsMarket
+        />
+      </TableContainer>
+
       <div className="flex flex-wrap gap-2">
         <TabButton active={activeTab === 'sobre'} onClick={() => setActiveTab('sobre')}>
           Mayores diferencias hacia arriba
         </TabButton>
         <TabButton active={activeTab === 'bajo'} onClick={() => setActiveTab('bajo')}>
           Oportunidades de subir precio
-        </TabButton>
-        <TabButton active={activeTab === 'top'} onClick={() => setActiveTab('top')}>
-          Más vendidos vs mercado
         </TabButton>
       </div>
 
@@ -340,15 +391,6 @@ export default function CompetitivenessWidget(props: { payload: CompetitivenessP
         </TableContainer>
       )}
 
-      {activeTab === 'top' && (
-        <TableContainer
-          title="Más vendidos vs mercado"
-          subtitle="Top 20 unidades vendidas del mes actual y su comparativa"
-          onExportCsv={exportTop}
-        >
-          <RowsTable rows={tables.topVendidos} includeUnits />
-        </TableContainer>
-      )}
     </section>
   );
 }

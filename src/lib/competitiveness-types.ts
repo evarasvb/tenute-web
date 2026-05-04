@@ -21,7 +21,9 @@ export interface CompetitivenessEntry {
   diferenciaPct: NullableNumber;
   stockActual: number;
   impactoPotencial: NullableNumber;
+  ranking?: number;
   unidadesVendidasMes?: number;
+  ingresos30d?: number;
   productoUrl: string;
 }
 
@@ -33,6 +35,8 @@ export interface CompetitivenessPayload {
     enMercado: number;
     bajoMercado: number;
     sinReferencia: number;
+    ingresosSobreMercado30d: number;
+    ingresosBajoMercado30d: number;
   };
   tables: {
     sobreMercado: CompetitivenessEntry[];

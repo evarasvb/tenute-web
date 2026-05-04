@@ -33,6 +33,7 @@ interface OrderRow {
 interface OrderItemRow {
   product_id: string | number;
   quantity: number | null;
+  subtotal?: number | null;
 }
 
 function numOrNull(value: unknown): NullableNumber {
@@ -152,15 +153,17 @@ export async function getCompetitivenessData(supabase: any): Promise<Competitive
   const orderIds = validOrders.map((order) => order.id);
 
   const soldQtyByProductId = new Map<string, number>();
+  const soldRevenueByProductId = new Map<string, number>();
   if (orderIds.length > 0) {
     const { data: orderItemsRows } = await supabase
       .from('order_items')
-      .select('product_id, quantity')
+      .select('product_id, quantity, subtotal')
       .in('order_id', orderIds);
 
     for (const item of (orderItemsRows || []) as OrderItemRow[]) {
       const key = String(item.product_id);
       soldQtyByProductId.set(key, (soldQtyByProductId.get(key) || 0) + toNumber(item.quantity));
+      soldRevenueByProductId.set(key, (soldRevenueByProductId.get(key) || 0) + toNumber(item.subtotal));
     }
   }
 
@@ -171,15 +174,25 @@ export async function getCompetitivenessData(supabase: any): Promise<Competitive
 
   const entryById = new Map(allEntries.map((entry) => [entry.id, entry] as const));
   const topVendidos: CompetitivenessEntry[] = topSoldIds
-    .map((id) => {
+    .map((id, index) => {
       const entry = entryById.get(id);
       if (!entry) return null;
       return {
         ...entry,
+        ranking: index + 1,
         unidadesVendidasMes: soldQtyByProductId.get(id) || 0,
+        ingresos30d: soldRevenueByProductId.get(id) || 0,
       } as CompetitivenessEntry;
     })
     .filter(Boolean) as CompetitivenessEntry[];
+
+  const ingresosSobreMercado30d = topVendidos
+    .filter((row) => row.clasificacion === 'sobre_mercado')
+    .reduce((sum, row) => sum + toNumber(row.ingresos30d), 0);
+
+  const ingresosBajoMercado30d = topVendidos
+    .filter((row) => row.clasificacion === 'bajo_mercado')
+    .reduce((sum, row) => sum + toNumber(row.ingresos30d), 0);
 
   const { data: profileData } = await supabase
     .from('admin_profiles')
@@ -196,7 +209,11 @@ export async function getCompetitivenessData(supabase: any): Promise<Competitive
   return {
     generatedAt: new Date().toISOString(),
     adminEmail,
-    kpis,
+    kpis: {
+      ...kpis,
+      ingresosSobreMercado30d,
+      ingresosBajoMercado30d,
+    },
     tables: {
       sobreMercado,
       bajoMercado,

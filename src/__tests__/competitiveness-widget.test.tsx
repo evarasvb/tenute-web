@@ -15,6 +15,8 @@ const payload: CompetitivenessPayload = {
     enMercado: 2,
     bajoMercado: 3,
     sinReferencia: 4,
+    ingresosSobreMercado30d: 150000,
+    ingresosBajoMercado30d: 90000,
   },
   tables: {
     sobreMercado: [
@@ -71,7 +73,9 @@ const payload: CompetitivenessPayload = {
         diferenciaPct: -22.22,
         stockActual: 6,
         impactoPotencial: 12000,
+        ranking: 1,
         unidadesVendidasMes: 10,
+        ingresos30d: 70000,
         productoUrl: '/admin/products/2',
       },
     ],
@@ -84,8 +88,9 @@ describe('CompetitivenessWidget', () => {
 
     expect(html).toContain('Competitividad');
     expect(html).toContain('Sobre mercado');
-    expect(html).toContain('Mayores diferencias hacia arriba');
-    expect(html).toContain('Producto sobre');
+    expect(html).toContain('Competitividad vs Más Vendidos');
+    expect(html).toContain('Producto bajo');
+    expect(html).toContain('Ingresos 30d en sobre mercado');
     expect(html).toContain('Enviar resumen por email');
   });
 
@@ -93,7 +98,7 @@ describe('CompetitivenessWidget', () => {
     const html = renderToStaticMarkup(<CompetitivenessWidget payload={payload} />);
 
     expect(html).toContain('Oportunidades de subir precio');
-    expect(html).toContain('Más vendidos vs mercado');
+    expect(html).toContain('Mayores diferencias hacia arriba');
     expect(html).toContain('Exportar CSV');
   });
 });
