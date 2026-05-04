@@ -21,7 +21,8 @@
     },
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/.next/"
+      "/.next/",
+      "/__tests__/setup\\.ts$"
     ],
     "transform": {
       "^.+\\.(ts|tsx)$": [
