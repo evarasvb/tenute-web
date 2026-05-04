@@ -164,22 +164,22 @@ export async function getCompetitivenessData(supabase: any): Promise<Competitive
     }
   }
 
-  const topSoldIds = [...soldQtyByProductId.entries()]
+  const topSoldIds = Array.from(soldQtyByProductId.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 20)
     .map(([productId]) => productId);
 
   const entryById = new Map(allEntries.map((entry) => [entry.id, entry] as const));
-  const topVendidos = topSoldIds
+  const topVendidos: CompetitivenessEntry[] = topSoldIds
     .map((id) => {
       const entry = entryById.get(id);
       if (!entry) return null;
       return {
         ...entry,
         unidadesVendidasMes: soldQtyByProductId.get(id) || 0,
-      };
+      } as CompetitivenessEntry;
     })
-    .filter((entry): entry is CompetitivenessEntry => entry !== null);
+    .filter(Boolean) as CompetitivenessEntry[];
 
   const { data: profileData } = await supabase
     .from('admin_profiles')
