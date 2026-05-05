@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 type LoginRole = 'admin' | 'seller';
 
@@ -11,6 +11,19 @@ export default function AdminLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = useMemo(() => {
+    const candidate = searchParams.get('redirect');
+    if (!candidate) return '/admin';
+    return candidate.startsWith('/admin') ? candidate : '/admin';
+  }, [searchParams]);
+
+  useEffect(() => {
+    const roleParam = searchParams.get('role');
+    if (roleParam === 'seller' || roleParam === 'admin') {
+      setRole(roleParam);
+    }
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,12 +37,14 @@ export default function AdminLoginPage() {
     });
 
     if (res.ok) {
-      router.push('/admin');
+      router.push(redirectTo);
     } else {
       setError('Contraseña incorrecta');
     }
     setLoading(false);
   }
+
+  const isSellerShortcut = searchParams.get('role') === 'seller';
 
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
@@ -45,6 +60,11 @@ export default function AdminLoginPage() {
             <p className="text-xs text-gray-500">Panel de administración</p>
           </div>
         </div>
+        {isSellerShortcut && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            Acceso directo a ventas: inicia sesión con la clave de vendedora.
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getSellerAllowedAdminPrefixes } from '@/lib/admin-session';
 
 type AdminRole = 'admin' | 'seller';
 
@@ -24,6 +25,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [role, setRole] = useState<AdminRole | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sellerAllowedPrefixes = useMemo(() => getSellerAllowedAdminPrefixes(), []);
+  const sellerHomePrefix = sellerAllowedPrefixes[0] || '/admin/ventas';
 
   useEffect(() => {
     if (pathname === '/admin/login') { setAuthenticated(false); return; }
@@ -43,10 +46,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (authenticated !== true || role !== 'seller') return;
-    if (pathname === '/admin/ventas') return;
+    if (sellerAllowedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) return;
     if (pathname.startsWith('/admin/login')) return;
-    router.replace('/admin/ventas');
-  }, [authenticated, role, pathname, router]);
+    router.replace(sellerHomePrefix);
+  }, [authenticated, role, pathname, router, sellerAllowedPrefixes, sellerHomePrefix]);
 
   if (pathname === '/admin/login') return <>{children}</>;
   if (authenticated === null) return (
@@ -57,7 +60,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!authenticated) return null;
 
   const visibleNavItems = role === 'seller'
-    ? NAV_ITEMS.filter((item) => item.href === '/admin/ventas')
+    ? NAV_ITEMS.filter((item) =>
+        sellerAllowedPrefixes.some((prefix) => item.href === prefix || item.href.startsWith(prefix))
+      )
     : NAV_ITEMS;
 
   async function handleLogout() {
@@ -118,7 +123,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </svg>
           </button>
           <h1 className="text-lg font-semibold text-gray-900 truncate">
-            {visibleNavItems.find((item) => isActive(item.href))?.label || (role === 'seller' ? 'Ventas' : 'Admin')}
+            {visibleNavItems.find((item) => isActive(item.href))?.label || (role === 'seller' ? 'Panel de vendedora' : 'Admin')}
           </h1>
           {role === 'seller' && (
             <span className="ml-auto px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">
