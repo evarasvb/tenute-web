@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase';
 import { scrapeCompetitorPrice } from '@/lib/scrapers';
+import pLimit from 'p-limit';
 
 type ProductId = string | number;
 
@@ -17,6 +18,23 @@ export interface CompetitorLinkRow {
     base_url: string;
     active: boolean;
   } | null;
+}
+
+export interface RefreshProgress {
+  processed: number;
+  total: number;
+  competitorCounts: Record<string, number>;
+}
+
+export interface RefreshBatchOptions {
+  concurrency?: number;
+  timeoutMs?: number;
+  userAgent?: string;
+  progressEvery?: number;
+  initialProcessed?: number;
+  initialCompetitorCounts?: Record<string, number>;
+  total?: number;
+  onProgress?: (progress: RefreshProgress) => void;
 }
 
 interface CompetitorRow {
@@ -109,7 +127,8 @@ async function persistCompetitorPrice(input: {
 }
 
 export async function refreshLinks(
-  links: CompetitorLinkRow[]
+  links: CompetitorLinkRow[],
+  options: RefreshBatchOptions = {}
 ): Promise<{
   ok: Array<{
     linkId: string;
@@ -128,6 +147,7 @@ export async function refreshLinks(
     competitorId: string;
     message: string;
   }>;
+  progress: RefreshProgress;
 }> {
   const ok: Array<{
     linkId: string;
@@ -147,55 +167,89 @@ export async function refreshLinks(
     message: string;
   }> = [];
 
-  for (const link of links) {
-    try {
-      const scraped = await scrapeCompetitorPrice({
-        url: link.url,
-        selector: link.selector,
-        competitorName: link.competitors?.name ?? null,
-      });
+  const limit = pLimit(options.concurrency ?? 8);
+  const progressEvery = options.progressEvery ?? 100;
+  let processed = options.initialProcessed ?? 0;
+  const total = options.total ?? links.length;
+  const competitorCounts: Record<string, number> = { ...(options.initialCompetitorCounts ?? {}) };
 
-      if (scraped.price == null) {
-        throw new Error('No se pudo extraer precio');
+  const tasks = links.map((link) =>
+    limit(async () => {
+      try {
+        const scraped = await scrapeCompetitorPrice({
+          url: link.url,
+          selector: link.selector,
+          competitorName: link.competitors?.name ?? null,
+          timeoutMs: options.timeoutMs ?? 15_000,
+          userAgent: options.userAgent,
+        });
+
+        if (scraped.price == null) {
+          throw new Error('No se pudo extraer precio');
+        }
+
+        await persistCompetitorPrice({
+          productId: link.product_id,
+          competitorId: link.competitor_id,
+          sourceUrl: scraped.finalUrl || link.url,
+          price: scraped.price,
+          currency: scraped.currency || 'CLP',
+          inStock: scraped.inStock,
+          raw: {
+            ...scraped.raw,
+            source: scraped.source,
+            status: scraped.status,
+            finalUrl: scraped.finalUrl,
+          },
+        });
+
+        ok.push({
+          linkId: link.id,
+          productId: link.product_id,
+          competitorId: link.competitor_id,
+          competitorName: link.competitors?.name ?? 'Competidor',
+          price: scraped.price,
+          currency: scraped.currency || 'CLP',
+          inStock: scraped.inStock,
+          scrapedAt: new Date().toISOString(),
+          sourceUrl: scraped.finalUrl || link.url,
+        });
+      } catch (error) {
+        errors.push({
+          linkId: link.id,
+          productId: link.product_id,
+          competitorId: link.competitor_id,
+          message: toErrorMessage(error),
+        });
+      } finally {
+        processed += 1;
+        const competitorKey = link.competitors?.name ?? link.competitor_id;
+        competitorCounts[competitorKey] = (competitorCounts[competitorKey] ?? 0) + 1;
+        if (
+          typeof options.onProgress === 'function' &&
+          (processed % progressEvery === 0 || processed === total)
+        ) {
+          options.onProgress({
+            processed,
+            total,
+            competitorCounts: { ...competitorCounts },
+          });
+        }
       }
+    })
+  );
 
-      await persistCompetitorPrice({
-        productId: link.product_id,
-        competitorId: link.competitor_id,
-        sourceUrl: scraped.finalUrl || link.url,
-        price: scraped.price,
-        currency: scraped.currency || 'CLP',
-        inStock: scraped.inStock,
-        raw: {
-          ...scraped.raw,
-          source: scraped.source,
-          status: scraped.status,
-          finalUrl: scraped.finalUrl,
-        },
-      });
+  await Promise.allSettled(tasks);
 
-      ok.push({
-        linkId: link.id,
-        productId: link.product_id,
-        competitorId: link.competitor_id,
-        competitorName: link.competitors?.name ?? 'Competidor',
-        price: scraped.price,
-        currency: scraped.currency || 'CLP',
-        inStock: scraped.inStock,
-        scrapedAt: new Date().toISOString(),
-        sourceUrl: scraped.finalUrl || link.url,
-      });
-    } catch (error) {
-      errors.push({
-        linkId: link.id,
-        productId: link.product_id,
-        competitorId: link.competitor_id,
-        message: toErrorMessage(error),
-      });
-    }
-  }
-
-  return { ok, errors };
+  return {
+    ok,
+    errors,
+    progress: {
+      processed,
+      total,
+      competitorCounts: { ...competitorCounts },
+    },
+  };
 }
 
 export async function getCompetitorPriceSummary(productId: ProductId): Promise<{

@@ -42,7 +42,7 @@
     "cheerio": "^1.2.0",
     "mercadopago": "^2.12.0",
     "next": "14.2.5",
-    "p-limit": "^7.3.0",
+    "p-limit": "^3.1.0",
     "pg": "^8.20.0",
     "probe-image-size": "^7.3.0",
     "react": "^18",

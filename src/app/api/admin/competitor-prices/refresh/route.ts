@@ -30,7 +30,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const refreshed = await refreshLinks(links);
+    const refreshed = await refreshLinks(links, {
+      concurrency: 8,
+      timeoutMs: 15_000,
+      progressEvery: 100,
+    });
     const touchedProductIds = Array.from(
       new Set(refreshed.ok.map((item) => item.productId).concat(refreshed.errors.map((item) => item.productId)))
     );

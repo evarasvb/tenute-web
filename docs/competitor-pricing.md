@@ -55,7 +55,14 @@ Además habilita RLS y agrega seed inicial para:
 ### Cron
 
 - `GET /api/cron/refresh-competitor-prices`
-  - Recorre todos los enlaces activos y refresca precios.
+  - Recorre enlaces activos y refresca precios en paralelo (`concurrency=8`) con `Promise.allSettled`.
+  - Soporta lotes con query params:
+    - `offset`: índice inicial (default `0`)
+    - `limit`: cantidad máxima a procesar en la ejecución (default: todos)
+  - Cada request aplica timeout de `15s` por enlace y user-agent realista.
+  - Loggea progreso cada 100 enlaces (`processed/total`) + conteos por competidor.
+  - Si estima que no alcanzará a terminar dentro de ~700s, responde:
+    - `{ partial: true, nextOffset: N }` para retomar en otra ejecución.
   - Si existe `CRON_SECRET`, requiere `Authorization: Bearer <CRON_SECRET>`.
 
 ## Cron en Vercel
@@ -63,6 +70,7 @@ Además habilita RLS y agrega seed inicial para:
 Se configuró en `vercel.json`:
 
 - `0 10 * * *` (equivale a 06:00 en `-04`).
+- `maxDuration: 800` para `/api/cron/refresh-competitor-prices`.
 
 Path:
 
