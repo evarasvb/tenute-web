@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 type LoginRole = 'admin' | 'seller';
 
-export default function AdminLoginPage() {
+function AdminLoginPageInner() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<LoginRole>('admin');
   const [error, setError] = useState('');
@@ -115,5 +115,21 @@ export default function AdminLoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function AdminLoginPageWrapper() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center px-4">
+          <div className="bg-white rounded-xl shadow-xl p-8 w-full max-w-sm text-center">
+            <p className="text-sm text-gray-500">Cargando acceso...</p>
+          </div>
+        </div>
+      }
+    >
+      <AdminLoginPageInner />
+    </Suspense>
   );
 }
