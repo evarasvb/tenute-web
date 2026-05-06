@@ -2,6 +2,8 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import CompetitivenessWidget from '@/components/admin/CompetitivenessWidget';
+import { CompetitivenessPayload } from '@/lib/competitiveness-types';
 
 interface Stats {
   totalProducts: number; withImages: number; withoutImages: number;
@@ -38,9 +40,28 @@ function StatCard({ label, value, sub, color = 'gray', icon }: { label: string; 
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [competitiveness, setCompetitiveness] = useState<CompetitivenessPayload | null>(null);
+  const [competitivenessLoading, setCompetitivenessLoading] = useState(true);
+  const [competitivenessError, setCompetitivenessError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/stats').then(r => r.json()).then(d => { setStats(d); setLoading(false); }).catch(() => setLoading(false));
+    fetch('/api/admin/competitiveness')
+      .then(async (r) => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body?.error || 'No se pudo cargar competitividad');
+        }
+        return r.json();
+      })
+      .then((d) => {
+        setCompetitiveness(d);
+        setCompetitivenessLoading(false);
+      })
+      .catch((error) => {
+        setCompetitivenessError(error instanceof Error ? error.message : 'No se pudo cargar competitividad');
+        setCompetitivenessLoading(false);
+      });
   }, []);
 
   const Skeleton = () => (
@@ -64,6 +85,22 @@ export default function AdminDashboard() {
             <StatCard label="Pedidos web" value={String(stats?.webOrdersCount30d||0)} sub="Pedidos en la tienda online" color="purple" icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             <StatCard label="Ventas manuales" value={String(stats?.manualSalesCount30d||0)} sub="WhatsApp, telefono, caja" color="orange" icon="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
           </div>
+        )}
+      </div>
+      <div>
+        {competitivenessLoading && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+            <div className="h-4 bg-gray-200 rounded w-40 mb-3" />
+            <div className="h-8 bg-gray-200 rounded w-full" />
+          </div>
+        )}
+        {!competitivenessLoading && competitivenessError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-sm text-red-700">{competitivenessError}</p>
+          </div>
+        )}
+        {!competitivenessLoading && competitiveness && (
+          <CompetitivenessWidget payload={competitiveness} />
         )}
       </div>
       <div>

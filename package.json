@@ -46,7 +46,8 @@
     "pg": "^8.20.0",
     "probe-image-size": "^7.3.0",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "resend": "^6.12.2"
   },
   "devDependencies": {
     "@types/jest": "^29",

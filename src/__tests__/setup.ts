@@ -15,3 +15,7 @@ if (typeof (globalThis as { File?: unknown }).File === 'undefined') {
 
   (globalThis as { File?: unknown }).File = MockFile;
 }
+
+if (typeof (globalThis as { React?: unknown }).React === 'undefined') {
+  (globalThis as { React?: unknown }).React = {};
+}
