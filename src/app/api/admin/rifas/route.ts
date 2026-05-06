@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
-
-function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-  return null;
-}
+import { requireAdminRole } from '@/lib/admin-session';
 
 function normalizePayload(input: Record<string, unknown>) {
   const slug =
@@ -41,7 +34,7 @@ function normalizePayload(input: Record<string, unknown>) {
 }
 
 export async function GET(request: NextRequest) {
-  const authError = checkAuth(request);
+  const authError = requireAdminRole(request);
   if (authError) return authError;
 
   const supabase = createAdminClient();
@@ -57,7 +50,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = checkAuth(request);
+  const authError = requireAdminRole(request);
   if (authError) return authError;
 
   const supabase = createAdminClient();

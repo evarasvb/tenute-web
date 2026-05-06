@@ -136,9 +136,9 @@ export default function AdminDashboard() {
           <h3 className="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Pedidos online</h3>
           <p className="text-sm text-gray-500 mt-1">Ver y gestionar pedidos de la tienda</p>
         </Link>
-        <Link href="/admin/stock" className="bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 hover:shadow-md transition-all group">
+        <Link href="/admin/products?tab=stock" className="bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 hover:shadow-md transition-all group">
           <h3 className="text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Inventario valorizado</h3>
-          <p className="text-sm text-gray-500 mt-1">Stock por bodega a costo de compra</p>
+          <p className="text-sm text-gray-500 mt-1">Stock por bodega en la pestaña de productos</p>
         </Link>
       </div>
     </div>

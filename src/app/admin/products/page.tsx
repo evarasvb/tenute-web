@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 interface EanSuggestion {
@@ -49,6 +50,8 @@ function marginColor(pct: number | null) {
 }
 
 export default function AdminProductsPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -80,13 +83,33 @@ export default function AdminProductsPage() {
   const [eanApplyingId, setEanApplyingId] = useState<string | null>(null);
   const [eanApplyingBulk, setEanApplyingBulk] = useState(false);
   const [eanBulkMessage, setEanBulkMessage] = useState('');
+  const [activeTab, setActiveTab] = useState<'products' | 'stock'>('products');
   const importFileRef = useRef<HTMLInputElement>(null);
   const limit = 50;
   const hasCostMarginFilter = !!(costMin || costMax || marginMin || marginMax);
 
   useEffect(() => {
-    fetch('/api/admin/categories').then(r => r.json()).then(setCategories);
-    fetch('/api/admin/brands').then(r => r.json()).then(setBrands);
+    setActiveTab(searchParams.get('tab') === 'stock' ? 'stock' : 'products');
+  }, [searchParams]);
+
+  function switchTab(tab: 'products' | 'stock') {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === 'stock') params.set('tab', 'stock');
+    else params.delete('tab');
+    const query = params.toString();
+    router.replace(query ? `/admin/products?${query}` : '/admin/products');
+  }
+
+  useEffect(() => {
+    fetch('/api/admin/categories').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setCategories(data);
+      else setCategories([]);
+    }).catch(() => setCategories([]));
+    fetch('/api/admin/brands').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setBrands(data);
+      else setBrands([]);
+    }).catch(() => setBrands([]));
   }, []);
 
   const fetchProducts = useCallback(async () => {
@@ -290,6 +313,21 @@ export default function AdminProductsPage() {
   }
 
   const totalPages = Math.ceil(total / limit);
+  const stockSummary = useMemo(() => {
+    const safeProducts = products || [];
+    const totalOcoa = safeProducts.reduce((sum, p) => sum + (p.stock_ocoa || 0), 0);
+    const totalLocal21 = safeProducts.reduce((sum, p) => sum + (p.stock_local21 || 0), 0);
+    const valueOcoa = safeProducts.reduce((sum, p) => sum + (p.cost_price || 0) * (p.stock_ocoa || 0), 0);
+    const valueLocal21 = safeProducts.reduce((sum, p) => sum + (p.cost_price || 0) * (p.stock_local21 || 0), 0);
+    return {
+      totalOcoa,
+      totalLocal21,
+      valueOcoa,
+      valueLocal21,
+      totalUnits: totalOcoa + totalLocal21,
+      totalValue: valueOcoa + valueLocal21,
+    };
+  }, [products]);
   function SortIcon({ col }: { col: string }) {
     if (sortBy !== col) return <span className="text-gray-300 ml-1">â</span>;
     return <span className="text-blue-600 ml-1">{sortDir === 'asc' ? 'â' : 'â'}</span>;
@@ -297,12 +335,39 @@ export default function AdminProductsPage() {
 
   return (
     <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-1 inline-flex gap-1">
+        <button
+          type="button"
+          onClick={() => switchTab('products')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'products' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Productos
+        </button>
+        <button
+          type="button"
+          onClick={() => switchTab('stock')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'stock' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+        >
+          Stock
+        </button>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Productos</h2>
-          <p className="text-sm text-gray-500">{total} productos en total</p>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {activeTab === 'products' ? 'Productos e inventario' : 'Stock por bodega'}
+          </h2>
+          <p className="text-sm text-gray-500">
+            {activeTab === 'products'
+              ? `${total} productos en total`
+              : `${stockSummary.totalUnits.toLocaleString('es-CL')} unidades valorizadas`}
+          </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        {activeTab === 'products' && (
+          <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => handleBulkActive(true)} disabled={bulkLoading}
             className="inline-flex items-center gap-1.5 px-3 py-2 border border-green-500 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -328,8 +393,37 @@ export default function AdminProductsPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
             Agregar
           </Link>
-        </div>
+          </div>
+        )}
       </div>
+
+      {activeTab === 'stock' && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 uppercase">Bodega Ocoa</p>
+              <p className="text-2xl font-bold mt-1">{stockSummary.totalOcoa.toLocaleString('es-CL')}</p>
+              <p className="text-xs text-gray-500 mt-1">{formatCLP(stockSummary.valueOcoa)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <p className="text-xs text-gray-500 uppercase">Local 21</p>
+              <p className="text-2xl font-bold mt-1">{stockSummary.totalLocal21.toLocaleString('es-CL')}</p>
+              <p className="text-xs text-gray-500 mt-1">{formatCLP(stockSummary.valueLocal21)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-blue-200 p-4 bg-blue-50">
+              <p className="text-xs text-blue-600 uppercase">Total unidades</p>
+              <p className="text-2xl font-bold text-blue-700 mt-1">{stockSummary.totalUnits.toLocaleString('es-CL')}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-purple-200 p-4 bg-purple-50">
+              <p className="text-xs text-purple-600 uppercase">Valor total</p>
+              <p className="text-2xl font-bold text-purple-700 mt-1">{formatCLP(stockSummary.totalValue)}</p>
+            </div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
+            Menos es más: ahora stock y productos viven en una sola pestaña para evitar duplicidad.
+          </div>
+        </>
+      )}
 
       {toggleError && (
         <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">

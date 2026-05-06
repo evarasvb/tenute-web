@@ -16,6 +16,15 @@ interface Product {
   barcode: string | null;
 }
 
+type ProductResponse = {
+  data?: Product[];
+  products?: Product[];
+};
+
+type SalesResponse = {
+  sales?: Sale[];
+};
+
 interface SaleItem {
   product_id: string;
   product_name: string;
@@ -46,6 +55,11 @@ interface Sale {
   }>;
 }
 
+type AdminCheckResponse = {
+  authenticated: boolean;
+  role: 'admin' | 'seller' | null;
+};
+
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
 }
@@ -53,6 +67,7 @@ function formatCLP(n: number) {
 export default function VentasPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [auth, setAuth] = useState<AdminCheckResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingSales, setLoadingSales] = useState(true);
   const [success, setSuccess] = useState('');
@@ -83,7 +98,12 @@ export default function VentasPage() {
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/admin/products?limit=500');
-    const data = await res.json();
+    if (res.status === 401) {
+      setError('Tu perfil no tiene permisos para cargar productos desde inventario');
+      setProducts([]);
+      return;
+    }
+    const data: ProductResponse = await res.json();
     setProducts(data.data || data.products || []);
   }, []);
 
@@ -92,13 +112,28 @@ export default function VentasPage() {
     const params = new URLSearchParams({ limit: '20' });
     if (search) params.set('search', search);
     const res = await fetch(`/api/admin/ventas?${params}`);
-    const data = await res.json();
+    const data: SalesResponse = await res.json();
     setSales(data.sales || []);
     setLoadingSales(false);
   }, [search]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => { fetchSales(); }, [fetchSales]);
+  useEffect(() => {
+    fetch('/api/admin/check')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) {
+          setAuth({ authenticated: false, role: null });
+          return;
+        }
+        setAuth({
+          authenticated: true,
+          role: data.role === 'seller' ? 'seller' : 'admin',
+        });
+      })
+      .catch(() => setAuth({ authenticated: false, role: null }));
+  }, []);
 
   useEffect(() => {
     if (!productSearch.trim()) { setProductResults([]); return; }
@@ -309,9 +344,10 @@ export default function VentasPage() {
           })),
         }),
       });
-      const data = await res.json();
+      const data: { error?: string; sale?: { sale_number: string } } = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al registrar venta');
-      setSuccess(`Venta ${data.sale.sale_number} registrada correctamente`);
+      const saleNumber = data.sale?.sale_number || 'VM-----';
+      setSuccess(`Venta ${saleNumber} registrada correctamente`);
       setCustomerName(''); setCustomerPhone(''); setCustomerRut('');
       setPaymentMethod('cash'); setDiscount(0); setNotes('');
       setItems([]);
@@ -337,6 +373,11 @@ export default function VentasPage() {
         <h2 className="text-2xl font-bold text-gray-900">Registrar venta</h2>
         <p className="text-sm text-gray-500 mt-1">WhatsApp, teléfono, caja — descuenta stock automáticamente</p>
       </div>
+      {auth?.role === 'seller' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+          Modo vendedora activo: acceso solo al módulo de ventas.
+        </div>
+      )}
 
       {success && (
         <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-green-800 text-sm flex items-center gap-2">
