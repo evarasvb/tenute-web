@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { getWarehouseStock, getAdditionalImages, getVideoUrl } from '@/lib/product-metadata';
 import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
+import CompetitorPricePanel from '@/components/admin/CompetitorPricePanel';
 
 interface Category {
   id: string;
@@ -772,6 +773,15 @@ export default function ProductEditorPage() {
           </button>
         </div>
       </div>
+
+      {!isNew && (
+        <CompetitorPricePanel
+          productId={id}
+          productName={product.name || ''}
+          ourPrice={Number(product.price) || 0}
+          onLocalPriceUpdated={(price) => handleChange('price', price)}
+        />
+      )}
 
       {showDelete && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">

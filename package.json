@@ -13,12 +13,16 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/src/__tests__/setup.ts"
+    ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/.next/"
+      "/.next/",
+      "/__tests__/setup\\.ts$"
     ],
     "transform": {
       "^.+\\.(ts|tsx)$": [
@@ -33,6 +37,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
+    "cheerio": "^1.2.0",
     "mercadopago": "^2.12.0",
     "next": "14.2.5",
     "pg": "^8.20.0",
