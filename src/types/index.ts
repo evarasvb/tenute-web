@@ -69,15 +69,7 @@ export interface Proveedor {
 // ─────────────────────────────────────────────
 // Order types
 // ─────────────────────────────────────────────
-export type OrderStatus =
-  | 'pending'
-  | 'paid'
-  | 'preparing'
-  | 'processing'
-  | 'shipped'
-  | 'delivered'
-  | 'cancelled'
-  | 'refunded';
+export type OrderStatus = 'pending' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded';
 
 export interface OrderItem {
   id: string;
@@ -89,32 +81,32 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   subtotal: number;
-  total_price?: number;
 }
 
 export interface Order {
   id: string;
   order_number: string;
   customer_name: string;
-  customer_phone?: string | null;
-  customer_email?: string | null;
-  customer_rut?: string | null;
-  shipping_method?: 'pickup' | 'local_delivery' | 'starken' | string;
-  shipping_address?: string | null;
-  shipping_commune?: string | null;
-  shipping_city?: string | null;
-  shipping_region?: string | null;
-  shipping_cost?: number;
-  payment_method?: string | null;
-  payment_id?: string | null;
-  payment_status?: string;
-  status: OrderStatus | string;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_rut?: string;
+  shipping_address?: string;
+  shipping_commune?: string;
+  shipping_city?: string;
+  shipping_region?: string;
+  shipping_method?: string;
+  shipping_cost: number;
   subtotal: number;
   discount?: number;
   total: number;
-  tracking_number?: string | null;
-  notes?: string | null;
-  admin_notes?: string | null;
+  status: OrderStatus;
+  payment_method?: string;
+  payment_id?: string;
+  payment_status?: string;
+  notes?: string;
+  admin_notes?: string;
+  tracking_number?: string;
+  items?: OrderItem[];
   created_at: string;
   updated_at?: string;
   items?: OrderItem[];

@@ -2,16 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Image from 'next/image';
 
-interface Product {
-  id: string;
-  name: string;
-  sku: string | null;
-  barcode?: string | null;
-  cost_price: number | null;
-  image_url: string | null;
-  stock_ocoa: number;
-  stock_local21: number;
-}
+interface Product { id: string; name: string; sku: string|null; barcode: string|null; cost_price: number|null; image_url: string|null; stock_ocoa: number; stock_local21: number; }
 interface PurchaseItem { product_id: string; product_name: string; product_sku: string; quantity: number; unit_cost: number; warehouse: 'ocoa'|'local'; }
 interface Purchase { id: string; purchase_number: string; supplier_name: string; supplier_rut: string|null; invoice_number: string|null; purchase_date: string; total_amount: number; notes: string|null; status: string; created_at: string; items: Array<{ id: string; product_name: string; product_sku: string|null; quantity: number; unit_cost: number; warehouse: string; }>; }
 

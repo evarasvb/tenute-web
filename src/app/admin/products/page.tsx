@@ -131,7 +131,7 @@ export default function AdminProductsPage() {
     if (activeFilter) params.set('active', activeFilter);
     const res = await fetch('/api/admin/products?' + params);
     const data = await res.json();
-    let items: Product[] = data.data || [];
+    let items: Product[] = data.products || [];
     if (hasCostMarginFilter) {
       if (costMin) items = items.filter(p => (p.cost_price || 0) >= Number(costMin));
       if (costMax) items = items.filter(p => (p.cost_price || 0) <= Number(costMax));
@@ -593,7 +593,6 @@ export default function AdminProductsPage() {
                 products.map(p => {
                   const margin = calcMargin(p.price, p.cost_price);
                   const totalStock = (p.stock_ocoa || 0) + (p.stock_local21 || 0) || p.stock || 0;
-                  const issues = imageIssues[p.id] || [];
                   return (
                     <tr key={p.id} className={'border-b border-gray-100 hover:bg-gray-50 transition-colors' + (!p.active ? ' opacity-50' : '')}>
                       <td className="px-3 py-2">
@@ -713,7 +712,7 @@ export default function AdminProductsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-lg w-full">
             <h3 className="text-lg font-semibold mb-1">Importar productos masivamente</h3>
-            <p className="text-xs text-gray-400 mb-4">Columnas: <span className="font-mono bg-gray-100 px-1 rounded">name, sku, barcode, price, cost_price, stock_ocoa, stock_local21, brand, description, image_url, active</span></p>
+            <p className="text-xs text-gray-400 mb-4">Columnas: <span className="font-mono bg-gray-100 px-1 rounded">name, sku, price, cost_price, stock_ocoa, stock_local21, brand, description, image_url, active</span></p>
             <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-xl p-8 cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
               <svg className="w-10 h-10 text-gray-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
               <span className="text-sm font-medium text-gray-600">{importing ? 'Importando...' : 'Seleccionar archivo Excel o CSV'}</span>

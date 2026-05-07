@@ -1,83 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 
-function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
-  }
-  return null;
+function checkAuth(req: NextRequest) {
+  return req.cookies.get('admin_session')?.value === 'authenticated';
 }
 
-function normalizePayload(input: Record<string, unknown>) {
-  const output: Record<string, unknown> = {};
-
-  if (typeof input.title === 'string') output.title = input.title.trim();
-  if (typeof input.slug === 'string') {
-    output.slug = input.slug
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/[^a-z0-9-]/g, '');
-  }
-  if (typeof input.description === 'string') output.description = input.description.trim() || null;
-  if (typeof input.hero_image_url === 'string') output.hero_image_url = input.hero_image_url.trim() || null;
-  if (typeof input.social_hashtag === 'string') output.social_hashtag = input.social_hashtag.trim() || null;
-  if (typeof input.draw_place === 'string') output.draw_place = input.draw_place.trim() || null;
-  if (typeof input.draw_date === 'string') output.draw_date = input.draw_date.trim() || null;
-  if (typeof input.number_price === 'number') output.number_price = input.number_price;
-  if (typeof input.total_numbers === 'number') output.total_numbers = input.total_numbers;
-  if (typeof input.available_numbers === 'number') output.available_numbers = input.available_numbers;
-  if (input.status === 'draft' || input.status === 'published') output.status = input.status;
-  if (Array.isArray(input.featured_products)) {
-    output.featured_products = input.featured_products
-      .map((item) => String(item || '').trim())
-      .filter(Boolean)
-      .slice(0, 30);
-  }
-
-  return output;
-}
-
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const authError = checkAuth(request);
-  if (authError) return authError;
-
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const supabase = createAdminClient();
-  const payload = normalizePayload(await request.json());
-
-  if (typeof payload.total_numbers === 'number' && payload.total_numbers < 1) {
-    return NextResponse.json({ error: 'La cantidad total de números debe ser mayor a 0' }, { status: 400 });
-  }
-  if (
-    typeof payload.available_numbers === 'number' &&
-    typeof payload.total_numbers === 'number' &&
-    (payload.available_numbers < 0 || payload.available_numbers > payload.total_numbers)
-  ) {
-    return NextResponse.json({ error: 'Números disponibles inválidos' }, { status: 400 });
-  }
-
   const { data, error } = await supabase
-    .from('raffles')
-    .update(payload)
+    .from('rifas')
+    .select('*, prizes:rifa_prizes(*, product:products(id,name,sku,image_url,stock_ocoa,stock_local21))')
+    .eq('id', params.id)
+    .single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+  return NextResponse.json({ rifa: data });
+}
+
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  const body = await request.json();
+  const { title, description, status, ticket_price, max_per_person, whatsapp_number, bank_info, draw_date } = body;
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('rifas')
+    .update({
+      ...(title !== undefined && { title: title.trim() }),
+      ...(description !== undefined && { description: description?.trim() || null }),
+      ...(status !== undefined && { status }),
+      ...(ticket_price !== undefined && { ticket_price: parseInt(ticket_price) || 0 }),
+      ...(max_per_person !== undefined && { max_per_person: max_per_person ? parseInt(max_per_person) : null }),
+      ...(whatsapp_number !== undefined && { whatsapp_number: whatsapp_number.trim() }),
+      ...(bank_info !== undefined && { bank_info: bank_info?.trim() || null }),
+      ...(draw_date !== undefined && { draw_date: draw_date || null }),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', params.id)
     .select()
     .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  return NextResponse.json(data);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ rifa: data });
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  const authError = checkAuth(request);
-  if (authError) return authError;
-
+  if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const supabase = createAdminClient();
-  const { error } = await supabase.from('raffles').delete().eq('id', params.id);
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Restore stock for inventory prizes before deleting
+  const { data: prizes } = await supabase
+    .from('rifa_prizes')
+    .select('product_id')
+    .eq('rifa_id', params.id)
+    .not('product_id', 'is', null);
+
+  if (prizes?.length) {
+    for (const prize of prizes) {
+      const { data: product } = await supabase
+        .from('products')
+        .select('stock_ocoa')
+        .eq('id', prize.product_id)
+        .single();
+      if (product) {
+        await supabase.from('products').update({ stock_ocoa: (product.stock_ocoa || 0) + 1 }).eq('id', prize.product_id);
+      }
+    }
   }
+
+  const { error } = await supabase.from('rifas').delete().eq('id', params.id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

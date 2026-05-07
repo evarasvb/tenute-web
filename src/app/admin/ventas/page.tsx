@@ -488,7 +488,7 @@ export default function VentasPage() {
                     className="w-full text-left px-4 py-2.5 hover:bg-blue-50 text-sm border-b border-gray-100 last:border-0">
                     <div className="font-medium text-gray-900">{p.name}</div>
                     <div className="text-xs text-gray-500">
-                      {formatCLP(p.price)} · SKU: {p.sku || '-'} · Local 21: {p.stock_local21 || 0} · Ocoa: {p.stock_ocoa}
+                      {formatCLP(p.price)} · Stock local: {p.stock_local21} · Ocoa: {p.stock_ocoa}
                     </div>
                   </button>
                 ))}
