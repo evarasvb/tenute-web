@@ -3,11 +3,21 @@
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useRef } from 'react';
 
+interface EanSuggestion {
+  productId: string;
+  productName: string;
+  currentBarcode: string | null
+  suggestedEan: string;
+  confidence: 'alta' | 'media' | 'baja';
+  score: number;
+  source: string;
+}
+
 interface Product {
   id: string;
   name: string;
   sku: string;
-    barcode: string | null;
+  barcode: string | null;
   price: number;
   cost_price: number;
   stock: number;
@@ -18,6 +28,27 @@ interface Product {
   category_id: string;
   active: boolean;
   categories?: { name: string; slug: string };
+}
+
+interface ImageCandidate {
+  url: string;
+  source: string;
+  title?: string;
+}
+
+interface ProductImageIssue {
+  issue_type: string;
+  current_url: string | null;
+  http_status: number | null;
+}
+
+interface ImageAuditResponse {
+  issues?: Array<{
+    product_id: string;
+    issue_type: string;
+    current_url: string | null;
+    http_status: number | null;
+  }>;
 }
 
 interface Category { id: string; name: string; }
@@ -51,8 +82,8 @@ export default function AdminProductsPage() {
   const [costMax, setCostMax] = useState('');
   const [marginMin, setMarginMin] = useState('');
   const [marginMax, setMarginMax] = useState('');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState('price');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -63,9 +94,25 @@ export default function AdminProductsPage() {
   const [showImport, setShowImport] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ inserted: number; errors: string[] } | null>(null);
+  const [showEanBulk, setShowEanBulk] = useState(false);
+  const [eanBulkLoading, setEanBulkLoading] = useState(false);
+  const [eanSuggestions, setEanSuggestions] = useState<EanSuggestion[]>([]);
+  const [eanApplyingId, setEanApplyingId] = useState<string | null>(null);
+  const [eanApplyingBulk, setEanApplyingBulk] = useState(false);
+  const [eanBulkMessage, setEanBulkMessage] = useState('');
+  const [imageIssues, setImageIssues] = useState<Record<string, ProductImageIssue[]>>({});
+  const [imageAuditLoading, setImageAuditLoading] = useState(false);
+  const [imageAuditError, setImageAuditError] = useState<string | null>(null);
+  const [imageSearchProduct, setImageSearchProduct] = useState<Product | null>(null);
+  const [imageSearchCandidates, setImageSearchCandidates] = useState<ImageCandidate[]>([]);
+  const [imageSearchLoading, setImageSearchLoading] = useState(false);
+  const [imageSearchError, setImageSearchError] = useState<string | null>(null);
+  const [replacingImageUrl, setReplacingImageUrl] = useState<string | null>(null);
+  const [showImageSearchModal, setShowImageSearchModal] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
   const limit = 50;
   const hasCostMarginFilter = !!(costMin || costMax || marginMin || marginMax);
+  const requiresClientFiltering = hasCostMarginFilter || hasImage === 'issues';
 
   useEffect(() => {
     fetch('/api/admin/categories').then(r => r.json()).then(setCategories);
@@ -80,7 +127,7 @@ export default function AdminProductsPage() {
     if (search) params.set('search', search);
     if (category) params.set('category', category);
     if (brand) params.set('brand', brand);
-    if (hasImage) params.set('has_image', hasImage);
+    if (hasImage && hasImage !== 'issues') params.set('has_image', hasImage);
     if (activeFilter) params.set('active', activeFilter);
     const res = await fetch('/api/admin/products?' + params);
     const data = await res.json();
@@ -90,6 +137,11 @@ export default function AdminProductsPage() {
       if (costMax) items = items.filter(p => (p.cost_price || 0) <= Number(costMax));
       if (marginMin) items = items.filter(p => { const m = calcMargin(p.price, p.cost_price); return m !== null && m >= Number(marginMin); });
       if (marginMax) items = items.filter(p => { const m = calcMargin(p.price, p.cost_price); return m !== null && m <= Number(marginMax); });
+    }
+    if (hasImage === 'issues') {
+      items = items.filter((product) => (imageIssues[product.id]?.length || 0) > 0);
+    }
+    if (requiresClientFiltering) {
       setTotal(items.length);
       const from = (page - 1) * limit;
       setProducts(items.slice(from, from + limit));
@@ -98,9 +150,131 @@ export default function AdminProductsPage() {
       setTotal(data.count || 0);
     }
     setLoading(false);
-  }, [page, search, category, brand, hasImage, activeFilter, costMin, costMax, marginMin, marginMax, sortBy, sortDir, hasCostMarginFilter]);
+  }, [page, search, category, brand, hasImage, activeFilter, costMin, costMax, marginMin, marginMax, sortBy, sortDir, hasCostMarginFilter, imageIssues, requiresClientFiltering]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  async function loadImageAudit() {
+    setImageAuditLoading(true);
+    setImageAuditError(null);
+    try {
+      const response = await fetch('/api/admin/images/audit?limit=2500');
+      const data = (await response.json()) as ImageAuditResponse & { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo cargar auditoría de imágenes');
+      }
+      const grouped: Record<string, ProductImageIssue[]> = {};
+      for (const issue of data.issues || []) {
+        if (!grouped[issue.product_id]) {
+          grouped[issue.product_id] = [];
+        }
+        grouped[issue.product_id].push({
+          issue_type: issue.issue_type,
+          current_url: issue.current_url,
+          http_status: issue.http_status,
+        });
+      }
+      setImageIssues(grouped);
+      if (hasImage === 'issues') {
+        setPage(1);
+      }
+    } catch (error: unknown) {
+      setImageAuditError(error instanceof Error ? error.message : 'Error cargando auditoría');
+      setImageIssues({});
+    } finally {
+      setImageAuditLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadImageAudit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function resolveIssueLabel(issue: ProductImageIssue): string {
+    switch (issue.issue_type) {
+      case 'http_error':
+        return `HTTP ${issue.http_status || 'error'}`;
+      case 'http_timeout':
+        return 'Timeout';
+      case 'duplicate_url':
+        return 'URL duplicada';
+      case 'small_dimensions':
+        return 'Imagen pequeña';
+      case 'suspicious_domain':
+        return 'Dominio sospechoso';
+      case 'missing_gallery':
+        return 'Sin galería';
+      case 'missing_image':
+      default:
+        return 'Sin imagen';
+    }
+  }
+
+  async function handleOpenImageSearch(product: Product) {
+    setShowImageSearchModal(true);
+    setImageSearchProduct(product);
+    setImageSearchCandidates([]);
+    setImageSearchError(null);
+    setImageSearchLoading(true);
+    try {
+      const response = await fetch('/api/admin/images/fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: [product.id], dryRun: true, previewCandidates: true }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo buscar candidatas');
+      }
+      const row = Array.isArray(data.results) ? data.results[0] : null;
+      const candidates = Array.isArray(row?.candidates) ? row.candidates : [];
+      if (candidates.length === 0) {
+        setImageSearchError('No se encontraron candidatas para este producto');
+      }
+      setImageSearchCandidates(candidates.slice(0, 3));
+    } catch (error: unknown) {
+      setImageSearchError(error instanceof Error ? error.message : 'Error buscando candidatas');
+    } finally {
+      setImageSearchLoading(false);
+    }
+  }
+
+  async function handleReplaceImage(newUrl: string) {
+    if (!imageSearchProduct) return;
+    setReplacingImageUrl(newUrl);
+    setImageSearchError(null);
+    try {
+      const response = await fetch('/api/admin/images/replace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: imageSearchProduct.id,
+          newUrl,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo reemplazar imagen');
+      }
+      setProducts((prev) =>
+        prev.map((product) =>
+          product.id === imageSearchProduct.id
+            ? { ...product, image_url: data.imageUrl || newUrl }
+            : product
+        )
+      );
+      setShowImageSearchModal(false);
+      setImageSearchProduct(null);
+      setImageSearchCandidates([]);
+      await loadImageAudit();
+      await fetchProducts();
+    } catch (error: unknown) {
+      setImageSearchError(error instanceof Error ? error.message : 'Error reemplazando imagen');
+    } finally {
+      setReplacingImageUrl(null);
+    }
+  }
 
   function handleSort(col: string) {
     if (sortBy === col) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -130,14 +304,14 @@ export default function AdminProductsPage() {
         setTimeout(() => setToggleError(null), 4000);
       }
     } catch {
-      setToggleError('Error de conexiÃ³n al cambiar estado');
+      setToggleError('Error de conexion al cambiar estado');
       setTimeout(() => setToggleError(null), 4000);
     }
     setTogglingId(null);
   }
 
   async function handleBulkActive(active: boolean) {
-    if (!confirm(active ? 'Â¿Activar TODOS los productos visibles?' : 'Â¿Desactivar TODOS los productos visibles?')) return;
+    if (!confirm(active ? 'Activar TODOS los productos visibles?' : 'Desactivar TODOS los productos visibles?')) return;
     setBulkLoading(true);
     setToggleError(null);
     try {
@@ -155,7 +329,7 @@ export default function AdminProductsPage() {
         setTimeout(() => setToggleError(null), 4000);
       }
     } catch {
-      setToggleError('Error de conexiÃ³n');
+      setToggleError('Error de conexion');
       setTimeout(() => setToggleError(null), 4000);
     }
     setBulkLoading(false);
@@ -167,7 +341,7 @@ export default function AdminProductsPage() {
     if (search) params.set('search', search);
     if (category) params.set('category', category);
     if (brand) params.set('brand', brand);
-    if (hasImage) params.set('has_image', hasImage);
+    if (hasImage && hasImage !== 'issues') params.set('has_image', hasImage);
     if (activeFilter) params.set('active', activeFilter);
     const res = await fetch('/api/admin/products/export?' + params);
     if (res.ok) {
@@ -195,6 +369,78 @@ export default function AdminProductsPage() {
     if (importFileRef.current) importFileRef.current.value = '';
   }
 
+  async function loadBulkEanSuggestions() {
+    setEanBulkLoading(true);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch('/api/admin/ean/bulk-suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 100, only_without_barcode: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo sugerir EAN');
+      setEanSuggestions(data.suggestions || []);
+      setEanBulkMessage(`Sugerencias encontradas: ${data.suggestions?.length || 0}`);
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error cargando sugerencias EAN');
+    } finally {
+      setEanBulkLoading(false);
+    }
+  }
+
+  async function applyEanSuggestion(s: EanSuggestion) {
+    setEanApplyingId(s.productId);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch(`/api/admin/products/${s.productId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: s.suggestedEan }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo aplicar EAN');
+      setEanSuggestions(prev => prev.filter(item => item.productId !== s.productId));
+      setEanBulkMessage(`EAN aplicado en ${s.productName}`);
+      fetchProducts();
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error aplicando EAN');
+    } finally {
+      setEanApplyingId(null);
+    }
+  }
+
+  async function applyHighConfidenceBulk() {
+    const rows = eanSuggestions
+      .filter((s) => s.confidence === 'alta')
+      .map((s) => ({ productId: s.productId, ean: s.suggestedEan }));
+    if (rows.length === 0) {
+      setEanBulkMessage('No hay sugerencias de confianza alta para aplicar');
+      return;
+    }
+
+    setEanApplyingBulk(true);
+    setEanBulkMessage('');
+    try {
+      const res = await fetch('/api/admin/ean/bulk-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates: rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error aplicando EAN masivo');
+
+      const appliedIds = new Set<string>((data.applied || []).map((r: { productId: string }) => r.productId));
+      setEanSuggestions((prev) => prev.filter((s) => !appliedIds.has(s.productId)));
+      setEanBulkMessage(`Aplicados ${data.appliedCount || 0} EAN de confianza alta`);
+      fetchProducts();
+    } catch (err) {
+      setEanBulkMessage(err instanceof Error ? err.message : 'Error aplicando en lote');
+    } finally {
+      setEanApplyingBulk(false);
+    }
+  }
+
   function clearAll() {
     setSearch(''); setCategory(''); setBrand(''); setHasImage('');
     setActiveFilter(''); setCostMin(''); setCostMax(''); setMarginMin(''); setMarginMax(''); setPage(1);
@@ -202,8 +448,8 @@ export default function AdminProductsPage() {
 
   const totalPages = Math.ceil(total / limit);
   function SortIcon({ col }: { col: string }) {
-    if (sortBy !== col) return <span className="text-gray-300 ml-1">â</span>;
-    return <span className="text-blue-600 ml-1">{sortDir === 'asc' ? 'â' : 'â'}</span>;
+    if (sortBy !== col) return <span className="text-gray-300 ml-1">+-</span>;
+    return <span className="text-blue-600 ml-1">{sortDir === 'asc' ? '^' : 'v'}</span>;
   }
 
   return (
@@ -225,8 +471,11 @@ export default function AdminProductsPage() {
             {bulkLoading ? '...' : 'Desactivar todo'}
           </button>
           <button onClick={() => setShowImport(true)} className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
-  Buscar nombre, SKU o codigo de barras...          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" /></svg>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" /></svg>
             Importar
+          </button>
+          <button onClick={() => { setShowEanBulk(true); loadBulkEanSuggestions(); }} className="inline-flex items-center gap-2 px-4 py-2 border border-indigo-300 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors">
+            Sugerir EAN masivo
           </button>
           <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-2 px-4 py-2 border border-green-600 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
@@ -253,7 +502,7 @@ export default function AdminProductsPage() {
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <select value={category} onChange={e => { setCategory(e.target.value); setPage(1); }}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-            <option value="">Todas las categorÃ­as</option>
+            <option value="">Todas las categorias</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <select value={brand} onChange={e => { setBrand(e.target.value); setPage(1); }}
@@ -272,28 +521,39 @@ export default function AdminProductsPage() {
             <option value="">Todas (imagen)</option>
             <option value="true">Con imagen</option>
             <option value="false">Sin imagen</option>
+            <option value="issues">Imagen con problemas</option>
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-100">
           <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Filtrar por:</span>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-500 whitespace-nowrap">Costo $</span>
-            <input type="number" placeholder="MÃ­n" value={costMin} onChange={e => { setCostMin(e.target.value); setPage(1); }}
+            <input type="number" placeholder="Min" value={costMin} onChange={e => { setCostMin(e.target.value); setPage(1); }}
               className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <span className="text-gray-300">â</span>
-            <input type="number" placeholder="MÃ¡x" value={costMax} onChange={e => { setCostMax(e.target.value); setPage(1); }}
+            <span className="text-gray-300">-</span>
+            <input type="number" placeholder="Max" value={costMax} onChange={e => { setCostMax(e.target.value); setPage(1); }}
               className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-500 whitespace-nowrap">Margen %</span>
-            <input type="number" placeholder="MÃ­n" value={marginMin} onChange={e => { setMarginMin(e.target.value); setPage(1); }}
+            <input type="number" placeholder="Min" value={marginMin} onChange={e => { setMarginMin(e.target.value); setPage(1); }}
               className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <span className="text-gray-300">â</span>
-            <input type="number" placeholder="MÃ¡x" value={marginMax} onChange={e => { setMarginMax(e.target.value); setPage(1); }}
+            <span className="text-gray-300">-</span>
+            <input type="number" placeholder="Max" value={marginMax} onChange={e => { setMarginMax(e.target.value); setPage(1); }}
               className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           {(search || category || brand || hasImage || activeFilter || costMin || costMax || marginMin || marginMax) && (
-            <button onClick={clearAll} className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">â Limpiar todo</button>
+            <button onClick={clearAll} className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">X Limpiar todo</button>
+          )}
+          <button
+            onClick={loadImageAudit}
+            disabled={imageAuditLoading}
+            className="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
+          >
+            {imageAuditLoading ? 'Auditando...' : 'Auditar imágenes'}
+          </button>
+          {imageAuditError && (
+            <span className="text-xs text-red-600">{imageAuditError}</span>
           )}
         </div>
       </div>
@@ -306,6 +566,7 @@ export default function AdminProductsPage() {
                 <th className="px-3 py-3 text-left font-medium text-gray-500 w-10">Img</th>
                 <th className="px-3 py-3 text-left font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('name')}>Nombre <SortIcon col="name" /></th>
                 <th className="px-3 py-3 text-left font-medium text-gray-500 hidden md:table-cell">SKU</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-500 hidden lg:table-cell">Barcode</th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('price')}>Precio <SortIcon col="price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell cursor-pointer" onClick={() => handleSort('cost_price')}>Costo <SortIcon col="cost_price" /></th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 hidden lg:table-cell">Margen</th>
@@ -313,20 +574,21 @@ export default function AdminProductsPage() {
                 <th className="px-3 py-3 text-center font-medium text-purple-500 hidden xl:table-cell">Local 21</th>
                 <th className="px-3 py-3 text-right font-medium text-gray-500 cursor-pointer select-none" onClick={() => handleSort('stock')}>Total <SortIcon col="stock" /></th>
                 <th className="px-3 py-3 text-center font-medium text-gray-500 w-20">Estado</th>
-                <th className="px-3 py-3 text-right font-medium text-gray-500 w-20">AcciÃ³n</th>
+                <th className="px-3 py-3 text-left font-medium text-gray-500 w-44">Imagen</th>
+                <th className="px-3 py-3 text-right font-medium text-gray-500 w-20">Accion</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-gray-100 animate-pulse">
-                    {Array.from({ length: 11 }).map((__, j) => (
+                    {Array.from({ length: 13 }).map((__, j) => (
                       <td key={j} className="px-3 py-3"><div className="h-4 bg-gray-200 rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : products.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
+                <tr><td colSpan={13} className="px-4 py-12 text-center text-gray-400">No se encontraron productos</td></tr>
               ) : (
                 products.map(p => {
                   const margin = calcMargin(p.price, p.cost_price);
@@ -334,14 +596,21 @@ export default function AdminProductsPage() {
                   return (
                     <tr key={p.id} className={'border-b border-gray-100 hover:bg-gray-50 transition-colors' + (!p.active ? ' opacity-50' : '')}>
                       <td className="px-3 py-2">
-                        {p.image_url ? <img src={p.image_url} alt="" className="w-8 h-8 rounded object-cover" /> : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
+                        {p.image_url ? (
+                          <img
+                            src={p.image_url}
+                            alt=""
+                            className="w-8 h-8 rounded object-cover"
+                          />
+                        ) : <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-gray-300 text-xs">--</div>}
                       </td>
                       <td className="px-3 py-2 font-medium text-gray-900 max-w-[180px] truncate">{p.name}</td>
                       <td className="px-3 py-2 text-gray-500 hidden md:table-cell font-mono text-xs">{p.sku || '-'}</td>
+                      <td className="px-3 py-2 text-gray-500 hidden lg:table-cell font-mono text-xs">{p.barcode || '-'}</td>
                       <td className="px-3 py-2 text-right font-medium">{formatCLP(p.price)}</td>
-                      <td className="px-3 py-2 text-right text-gray-500 hidden lg:table-cell">{p.cost_price ? formatCLP(p.cost_price) : <span className="text-gray-300">â</span>}</td>
+                      <td className="px-3 py-2 text-right text-gray-500 hidden lg:table-cell">{p.cost_price ? formatCLP(p.cost_price) : <span className="text-gray-300">-</span>}</td>
                       <td className={'px-3 py-2 text-right hidden lg:table-cell ' + marginColor(margin)}>
-                        {margin !== null ? margin.toFixed(1) + '%' : <span className="text-gray-300">â</span>}
+                        {margin !== null ? margin.toFixed(1) + '%' : <span className="text-gray-300">-</span>}
                       </td>
                       <td className="px-3 py-2 text-center hidden xl:table-cell">
                         <span className="text-xs text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">{p.stock_ocoa || 0}</span>
@@ -361,8 +630,39 @@ export default function AdminProductsPage() {
                           <span className={'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ' + (p.active ? 'translate-x-4' : 'translate-x-1')} />
                         </button>
                       </td>
+                      <td className="px-3 py-2">
+                        {issues.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {issues.slice(0, 2).map((issue, index) => (
+                              <span
+                                key={`${p.id}-${issue.issue_type}-${index}`}
+                                className="px-2 py-0.5 text-[10px] rounded-full bg-amber-100 text-amber-800 border border-amber-200"
+                                title={issue.current_url || undefined}
+                              >
+                                {resolveIssueLabel(issue)}
+                              </span>
+                            ))}
+                            {issues.length > 2 && (
+                              <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                                +{issues.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300">Sin issues</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          {issues.length > 0 && (
+                            <button
+                              onClick={() => handleOpenImageSearch(p)}
+                              className="px-2 py-1 text-[11px] border border-amber-300 text-amber-700 rounded hover:bg-amber-50"
+                              title="Buscar foto"
+                            >
+                              Buscar foto
+                            </button>
+                          )}
                           <Link href={'/admin/products/' + p.id} className="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition-colors" title="Editar">
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                           </Link>
@@ -380,7 +680,7 @@ export default function AdminProductsPage() {
         </div>
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-            <p className="text-sm text-gray-500">Mostrando {((page - 1) * limit) + 1}â{Math.min(page * limit, total)} de {total}</p>
+            <p className="text-sm text-gray-500">Mostrando {((page - 1) * limit) + 1}-{Math.min(page * limit, total)} de {total}</p>
             <div className="flex items-center gap-1">
               <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40">Anterior</button>
@@ -399,7 +699,7 @@ export default function AdminProductsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full">
             <h3 className="text-lg font-semibold mb-2">Eliminar producto</h3>
-            <p className="text-sm text-gray-500 mb-4">Â¿EstÃ¡s seguro? Esta acciÃ³n no se puede deshacer.</p>
+            <p className="text-sm text-gray-500 mb-4">Estas seguro? Esta accion no se puede deshacer.</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
               <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">Eliminar</button>
@@ -420,7 +720,7 @@ export default function AdminProductsPage() {
             </label>
             {importResult && (
               <div className={'mt-3 p-3 rounded-lg text-sm ' + (importResult.inserted > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200')}>
-                {importResult.inserted > 0 && <p className="text-green-700 font-semibold">â {importResult.inserted} productos importados</p>}
+                {importResult.inserted > 0 && <p className="text-green-700 font-semibold">OK {importResult.inserted} productos importados</p>}
                 {importResult.errors?.length > 0 && <div className="mt-1 text-red-700 text-xs"><p className="font-medium">Errores:</p><ul className="list-disc list-inside mt-1">{importResult.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}</ul></div>}
               </div>
             )}
@@ -428,6 +728,131 @@ export default function AdminProductsPage() {
               <a href="/api/admin/products/import" className="text-sm text-blue-600 hover:underline">Descargar plantilla</a>
               <button onClick={() => { setShowImport(false); setImportResult(null); }} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cerrar</button>
             </div>
+          </div>
+        </div>
+      )}
+      {showEanBulk && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-4xl w-full max-h-[85vh] overflow-auto">
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div>
+                <h3 className="text-lg font-semibold">Sugerencia masiva de EAN</h3>
+                <p className="text-xs text-gray-500">Solo productos sin código de barras. Revisa y aplica por confianza.</p>
+              </div>
+              <button onClick={() => setShowEanBulk(false)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cerrar</button>
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <button onClick={loadBulkEanSuggestions} disabled={eanBulkLoading} className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">
+                {eanBulkLoading ? 'Buscando...' : 'Refrescar sugerencias'}
+              </button>
+              <button onClick={applyHighConfidenceBulk} disabled={eanApplyingBulk || eanSuggestions.length === 0} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">
+                {eanApplyingBulk ? 'Aplicando...' : 'Aplicar todas (alta)'}
+              </button>
+              {eanBulkMessage && <span className="text-sm text-gray-600">{eanBulkMessage}</span>}
+            </div>
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Producto</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">EAN sugerido</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Confianza</th>
+                    <th className="text-left px-3 py-2 font-medium text-gray-500">Fuente</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eanSuggestions.length === 0 && !eanBulkLoading ? (
+                    <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Sin sugerencias por ahora</td></tr>
+                  ) : (
+                    eanSuggestions.map((s) => (
+                      <tr key={s.productId} className="border-b border-gray-100">
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-gray-800">{s.productName}</p>
+                          {s.currentBarcode && <p className="text-xs text-gray-400">Actual: {s.currentBarcode}</p>}
+                        </td>
+                        <td className="px-3 py-2 font-mono">{s.suggestedEan}</td>
+                        <td className="px-3 py-2">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.confidence === 'alta' ? 'bg-green-100 text-green-700' : s.confidence === 'media' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                            {s.confidence} ({s.score})
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{s.source}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button onClick={() => applyEanSuggestion(s)} disabled={eanApplyingId === s.productId} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50">
+                            {eanApplyingId === s.productId ? 'Aplicando...' : 'Aplicar EAN'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+      {showImageSearchModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-auto">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-semibold">Buscar foto</h3>
+                <p className="text-xs text-gray-500">
+                  {imageSearchProduct?.name}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImageSearchModal(false);
+                  setImageSearchProduct(null);
+                  setImageSearchCandidates([]);
+                  setImageSearchError(null);
+                }}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cerrar
+              </button>
+            </div>
+            {imageSearchError && (
+              <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                {imageSearchError}
+              </div>
+            )}
+            {imageSearchLoading ? (
+              <p className="text-sm text-gray-500">Buscando candidatas...</p>
+            ) : imageSearchCandidates.length === 0 ? (
+              <p className="text-sm text-gray-400">No se encontraron candidatas.</p>
+            ) : (
+              <div className="space-y-3">
+                {imageSearchCandidates.slice(0, 3).map((candidate) => (
+                  <div
+                    key={candidate.url}
+                    className="border border-gray-200 rounded-lg p-3 flex items-center gap-3"
+                  >
+                    <img
+                      src={candidate.url}
+                      alt=""
+                      className="w-18 h-18 rounded object-cover border border-gray-100"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-500">
+                        {candidate.source}
+                        {candidate.title ? ` · ${candidate.title}` : ''}
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">{candidate.url}</p>
+                    </div>
+                    <button
+                      onClick={() => handleReplaceImage(candidate.url)}
+                      disabled={replacingImageUrl === candidate.url}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {replacingImageUrl === candidate.url ? 'Aplicando...' : 'Usar esta'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

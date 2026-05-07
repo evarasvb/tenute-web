@@ -63,6 +63,8 @@ export default function OrderDetailClient({ orderNumber }: { orderNumber: string
   }
 
   const status = STATUS_LABELS[order.status] || { label: order.status, color: 'bg-gray-100 text-gray-700' };
+  const shippingMethod = order.shipping_method ?? '';
+  const shippingCost = Number(order.shipping_cost || 0);
 
   return (
     <div className="space-y-6">
@@ -114,7 +116,7 @@ export default function OrderDetailClient({ orderNumber }: { orderNumber: string
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Envío</h3>
         <p className="text-sm">
           <span className="text-gray-500">Método:</span>{' '}
-          {SHIPPING_LABELS[order.shipping_method] || order.shipping_method}
+          {(shippingMethod && SHIPPING_LABELS[shippingMethod]) || shippingMethod || 'No especificado'}
         </p>
         {order.shipping_address && (
           <p className="text-sm">
@@ -131,7 +133,7 @@ export default function OrderDetailClient({ orderNumber }: { orderNumber: string
             <strong>{order.tracking_number}</strong>
           </p>
         )}
-        {order.shipping_method === 'starken' && !order.tracking_number && order.status === 'pending' && (
+        {shippingMethod === 'starken' && !order.tracking_number && order.status === 'pending' && (
           <div className="mt-2 p-3 bg-amber-50 border border-amber-100 rounded-lg text-sm text-amber-800">
             Te contactaremos por WhatsApp para confirmar el costo de envío.
           </div>
@@ -178,11 +180,11 @@ export default function OrderDetailClient({ orderNumber }: { orderNumber: string
           <div className="flex justify-between text-sm">
             <span className="text-gray-600">Envío</span>
             <span>
-              {order.shipping_method === 'starken' && order.shipping_cost === 0
+              {shippingMethod === 'starken' && shippingCost === 0
                 ? 'Por cotizar'
-                : order.shipping_cost === 0
+                : shippingCost === 0
                 ? 'Gratis'
-                : formatCLP(order.shipping_cost)}
+                : formatCLP(shippingCost)}
             </span>
           </div>
           <div className="flex justify-between text-base font-bold pt-1">

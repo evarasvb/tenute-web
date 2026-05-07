@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { useCart } from '@/contexts/CartContext';
+import { getAdditionalImages, getVideoUrl } from '@/lib/product-metadata';
 
 interface Category {
   id: string;
@@ -22,6 +23,8 @@ interface Product {
   brand: string;
   stock: number;
   categories: any;
+  metadata?: unknown;
+  video_url?: string | null;
 }
 
 function formatCLP(n: number) {
@@ -56,7 +59,7 @@ export default function CatalogClient({
 
     let query = supabase
       .from('products')
-      .select('id, name, slug, price, compare_price, image_url, brand, stock, categories(name)', { count: 'exact' })
+      .select('id, name, slug, price, compare_price, image_url, brand, stock, categories(name), metadata, video_url', { count: 'exact' })
       .eq('active', true);
 
     if (search) {
@@ -173,6 +176,25 @@ export default function CatalogClient({
                   ) : (
                     <span className="text-4xl text-gray-300">📦</span>
                   )}
+                  {(() => {
+                    const addlCount = getAdditionalImages(p as unknown as Record<string, unknown>).length;
+                    const hasVideo = !!getVideoUrl(p as unknown as Record<string, unknown>);
+                    if (!addlCount && !hasVideo) return null;
+                    return (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        {addlCount > 0 && (
+                          <span className="rounded-full bg-black/70 text-white text-[10px] px-2 py-0.5">
+                            +{addlCount} fotos
+                          </span>
+                        )}
+                        {hasVideo && (
+                          <span className="rounded-full bg-blue-600/90 text-white text-[10px] px-2 py-0.5">
+                            video
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </Link>
               <div className="p-3 flex flex-col gap-1 flex-1">

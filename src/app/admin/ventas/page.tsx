@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { createBarcodeDetector } from '@/lib/barcode-detector';
+import { normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 interface Product {
   id: string;
@@ -11,7 +13,7 @@ interface Product {
   stock_local21: number;
   stock_ocoa: number;
   sku: string | null;
-    barcode: string | null;
+  barcode: string | null;
 }
 
 interface SaleItem {
@@ -67,14 +69,22 @@ export default function VentasPage() {
 
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<Product[]>([]);
-    const [scannerActive, setScannerActive] = useState(false);
+  const [scannerActive, setScannerActive] = useState(false);
   const [barcodeInput, setBarcodeInput] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState('');
+  const [scannerError, setScannerError] = useState('');
+  const [scanCount, setScanCount] = useState(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanLoopRef = useRef<number | null>(null);
+  const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProducts = useCallback(async () => {
     const res = await fetch('/api/admin/products?limit=500');
     const data = await res.json();
-    setProducts(data.products || []);
+    setProducts(data.data || data.products || []);
   }, []);
 
   const fetchSales = useCallback(async () => {
@@ -92,15 +102,17 @@ export default function VentasPage() {
 
   useEffect(() => {
     if (!productSearch.trim()) { setProductResults([]); return; }
-    const q = productSearch.toLowerCase();
+    const q = productSearch.trim().toLowerCase();
     setProductResults(
       products.filter(p =>
-        p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q)) || (p.barcode && p.barcode.toLowerCase().includes(q))
+        p.name.toLowerCase().includes(q) ||
+        (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q))
       ).slice(0, 8)
     );
   }, [productSearch, products]);
 
-  function addProduct(p: Product) {
+  const addProduct = useCallback((p: Product) => {
     setItems(prev => {
       const existing = prev.find(i => i.product_id === p.id);
       if (existing) {
@@ -121,20 +133,128 @@ export default function VentasPage() {
     });
     setProductSearch('');
     setProductResults([]);
+  }, []);
+
+  const findProductByBarcode = useCallback((code: string) => {
+    const normalized = normalizeBarcode(code).toLowerCase();
+    if (!normalized) return null;
+    return products.find((p) => (p.barcode || '').trim().toLowerCase() === normalized)
+      || products.find((p) => (p.sku || '').trim().toLowerCase() === normalized)
+      || null;
+  }, [products]);
+
+  const handleBarcodeLookup = useCallback((code: string, opts?: { silentNotFound?: boolean; skipValidation?: boolean }) => {
+    const normalized = normalizeBarcode(code);
+    if (!normalized) return;
+    const validation = opts?.skipValidation
+      ? { valid: true, normalized }
+      : validateBarcode(normalized, { allowCode128Like: true });
+    if (!validation.valid && !opts?.silentNotFound) {
+      setError('Formato de código inválido. Usa EAN-8, EAN-13, UPC o CODE128.');
+      return;
+    }
+    const product = findProductByBarcode(normalized);
+    if (product) {
+      addProduct(product);
+      setBarcodeInput('');
+      setError('');
+      setSuccess(`Producto "${product.name}" agregado por código`);
+      setScanCount((prev) => prev + 1);
+      return;
+    }
+    if (!opts?.silentNotFound) {
+      setError(`No se encontró producto para el código "${normalized}"`);
+    }
+  }, [addProduct, findProductByBarcode]);
+
+  const stopScanner = useCallback(() => {
+    if (scanLoopRef.current) {
+      cancelAnimationFrame(scanLoopRef.current);
+      scanLoopRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setScannerOpen(false);
+    setScannerStatus('');
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    setScannerError('');
+    setError('');
+    const media = navigator.mediaDevices;
+    if (!media?.getUserMedia) {
+      setScannerError('Tu navegador no soporta acceso a cámara');
+      return;
+    }
+
+    let detector;
+    try {
+      detector = await createBarcodeDetector();
+    } catch {
+      setScannerError('No se pudo inicializar el lector de códigos en este navegador');
+      return;
+    }
+
+    try {
+      const stream = await media.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setScannerOpen(true);
+      setScannerStatus('Apunta la cámara al código de barras');
+
+      const scan = async () => {
+        if (!videoRef.current) return;
+        try {
+          const detections = await detector.detect(videoRef.current);
+          const rawValue = detections?.[0]?.rawValue?.trim();
+          if (rawValue) {
+            const normalized = normalizeBarcode(rawValue);
+            const now = Date.now();
+            if (lastScanRef.current.code !== normalized || now - lastScanRef.current.at > 1500) {
+              lastScanRef.current = { code: normalized, at: now };
+              setBarcodeInput(normalized);
+              handleBarcodeLookup(normalized, { silentNotFound: true, skipValidation: true });
+              setScannerStatus(`Detectado: ${normalized}`);
+            }
+          }
+        } catch {
+          // Evitar romper loop por fallos intermitentes del detector.
+        }
+        scanLoopRef.current = requestAnimationFrame(scan);
+      };
+
+      scanLoopRef.current = requestAnimationFrame(scan);
+    } catch {
+      setScannerError('No se pudo iniciar la cámara');
+      stopScanner();
+    }
+  }, [handleBarcodeLookup, stopScanner]);
+
+  useEffect(() => () => stopScanner(), [stopScanner]);
+
+  function findProductByCode(rawCode: string) {
+    const code = rawCode.trim().toLowerCase();
+    if (!code) return null;
+    return products.find((p: Product) =>
+      (p.barcode || '').trim().toLowerCase() === code ||
+      (p.sku || '').trim().toLowerCase() === code
+    ) || null;
   }
 
-    function handleBarcodeScan(code: string) {
-    if (!code.trim()) return;
-    const found = products.find((p: Product) => p.barcode === code || p.sku === code);
-    if (found) {
-      addProduct(found);
-      setSuccess(`Producto agregado por scanner: ${found.name}`);
-      setTimeout(() => setSuccess(''), 3000);
-    } else {
-      setError(`No se encontró producto con código: ${code}`);
-      setTimeout(() => setError(''), 3000);
-    }
-    setBarcodeInput('');
+  function handleBarcodeScan(code: string) {
+    handleBarcodeLookup(code);
   }
 
   function toggleScanner() {
@@ -277,11 +397,68 @@ export default function VentasPage() {
 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Productos</h3>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 mb-4">
+            <input
+              type="text"
+              value={barcodeInput}
+              onChange={(e) => setBarcodeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleBarcodeLookup(barcodeInput);
+                }
+              }}
+              placeholder="Escanea o escribe barcode/SKU y presiona Enter"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="button"
+              onClick={() => handleBarcodeLookup(barcodeInput)}
+              className="px-3 py-2 border border-blue-300 text-blue-700 rounded-lg text-sm hover:bg-blue-50"
+            >
+              Agregar código
+            </button>
+            <button
+              type="button"
+              onClick={() => (scannerOpen ? stopScanner() : startScanner())}
+              className={`px-3 py-2 rounded-lg text-sm text-white ${scannerOpen ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-800 hover:bg-gray-900'}`}
+            >
+              {scannerOpen ? 'Detener cámara' : 'Escanear cámara'}
+            </button>
+          </div>
+          <div className="mb-3 flex items-center justify-between text-xs text-gray-500">
+            <span>Escaneados en esta sesión: {scanCount}</span>
+            <span>Formatos sugeridos: EAN-8 / EAN-13 / UPC / CODE128</span>
+          </div>
+
+          {scannerError && (
+            <p className="text-xs text-red-600 mb-3">{scannerError}</p>
+          )}
+
+          {scannerOpen && (
+            <div className="mb-4 border border-gray-200 rounded-lg overflow-hidden">
+              <video ref={videoRef} className="w-full max-h-72 bg-black" playsInline muted />
+              <p className="px-3 py-2 text-xs text-gray-600">{scannerStatus || 'Iniciando cámara...'}</p>
+            </div>
+          )}
+
           <div className="relative mb-4">
             <input
               type="text"
               value={productSearch}
               onChange={e => setProductSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const foundByCode = findProductByCode(productSearch);
+                if (foundByCode) {
+                  addProduct(foundByCode);
+                  return;
+                }
+                if (productResults.length > 0) {
+                  addProduct(productResults[0]);
+                }
+              }}
               placeholder="Buscar por nombre, SKU o código de barras..."
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -461,4 +638,4 @@ export default function VentasPage() {
       </div>
     </div>
   );
-    }
+}

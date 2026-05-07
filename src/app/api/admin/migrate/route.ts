@@ -8,7 +8,7 @@ function checkAuth(req: NextRequest) {
 
 const MIGRATION_SQL = `
 ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_ocoa integer DEFAULT 0;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_local integer DEFAULT 0;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_local21 integer DEFAULT 0;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS images text[] DEFAULT '{}';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS active boolean DEFAULT true;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price numeric(12,2);
@@ -22,8 +22,10 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS compare_price numeric(12,2);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured boolean DEFAULT false;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_offer boolean DEFAULT false;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_auction boolean DEFAULT false;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode text;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
-UPDATE products SET stock_local = stock WHERE stock_local = 0 AND stock_ocoa = 0 AND stock > 0;
+CREATE UNIQUE INDEX IF NOT EXISTS products_barcode_unique_idx ON products (barcode) WHERE barcode IS NOT NULL;
+UPDATE products SET stock_local21 = stock WHERE stock_local21 = 0 AND stock_ocoa = 0 AND stock > 0;
 `;
 
 export async function POST(request: NextRequest) {

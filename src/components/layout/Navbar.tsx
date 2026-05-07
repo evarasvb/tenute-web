@@ -28,6 +28,7 @@ export default function Navbar() {
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
           <Link href="/#categorias" className="hover:text-blue-600 transition-colors">Categorías</Link>
           <Link href="/#mayorista" className="hover:text-blue-600 transition-colors">Mayorista</Link>
+          <Link href="/rifas" className="hover:text-blue-600 transition-colors">Rifas</Link>
           <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">Contacto</a>
         </nav>
 
@@ -82,6 +83,7 @@ export default function Navbar() {
           <nav className="flex flex-col gap-3 pt-3 text-sm font-medium text-gray-700">
             <Link href="/#categorias" onClick={() => setOpen(false)}>Categorías</Link>
             <Link href="/#mayorista" onClick={() => setOpen(false)}>Mayorista</Link>
+            <Link href="/rifas" onClick={() => setOpen(false)}>Rifas</Link>
             <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Contacto</a>
             <Link href="/catalogo" className="btn-primary mt-2 w-full text-center" onClick={() => setOpen(false)}>Ver catálogo</Link>
           </nav>

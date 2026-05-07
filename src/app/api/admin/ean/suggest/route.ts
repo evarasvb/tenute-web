@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { normalizeBarcodeDigits, validateEAN13 } from '@/lib/ean';
 
 // ─────────────────────────────────────────────
 // Rate limiter: max 30 req/min per IP (in-memory, resets on cold start)
@@ -20,35 +21,17 @@ function rateLimit(ip: string): boolean {
   return false;
 }
 
-// ─────────────────────────────────────────────
-// EAN-13 checksum validator
-// ─────────────────────────────────────────────
-export function validateEAN13(code: string): boolean {
-  if (!/^d{13}$/.test(code)) return false;
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += parseInt(code[i]) * (i % 2 === 0 ? 1 : 3);
-  }
-  const checkDigit = (10 - (sum % 10)) % 10;
-  return checkDigit === parseInt(code[12]);
-}
-
-// ─────────────────────────────────────────────
-// Normalise barcode: strip leading zeros until 13 digits (EAN-13)
-// or return as-is (UPC-A 12 → pad to 13)
-// ─────────────────────────────────────────────
-export function normaliseBarcode(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 12) return '0' + digits; // UPC-A → EAN-13
-  if (digits.length === 13) return digits;
-  return digits; // return cleaned digits even if not std length
+function normaliseBarcode(raw: string): string {
+  const digits = normalizeBarcodeDigits(raw);
+  if (digits.length === 12) return `0${digits}`; // UPC-A -> EAN-13
+  return digits;
 }
 
 function checkAuth(req: NextRequest) {
   return req.cookies.get('admin_session')?.value === 'authenticated';
 }
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   if (!checkAuth(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
 
   const ip = request.headers.get('x-forwarded-for') ?? 'unknown';
@@ -56,9 +39,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Demasiadas solicitudes. Espera un minuto.' }, { status: 429 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const productId = searchParams.get('product_id');
-  const productName = searchParams.get('name') ?? '';
+  const body = await request.json().catch(() => ({}));
+  const productId = typeof body.product_id === 'string' ? body.product_id : null;
+  const productName = typeof body.name === 'string' ? body.name : '';
 
   if (!productId && !productName) {
     return NextResponse.json({ error: 'Se requiere product_id o name' }, { status: 400 });
