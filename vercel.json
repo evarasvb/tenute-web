@@ -4,10 +4,5 @@
       "path": "/api/cron/refresh-competitor-prices",
       "schedule": "0 10 * * *"
     }
-  ],
-  "functions": {
-    "api/cron/refresh-competitor-prices": {
-      "maxDuration": 800
-    }
-  }
+  ]
 }
