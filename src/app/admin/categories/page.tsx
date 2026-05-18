@@ -106,16 +106,16 @@ export default function AdminCategoriesPage() {
                                     </button>
                                                               )}
                                                   {!hasChildren && <span className="w-4 h-4" />}
-                                                  {depth > 0 && <span className="text-gray-300 text-xs mr-1">└</span>span>}
+                                                  {depth > 0 && <span className="text-gray-300 text-xs mr-1">└</span>}
                                                   {editingId === cat.id ? (
                                     <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
                                                         className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
                                   ) : (
-                                    <span className={`font-medium text-gray-900 ${depth > 0 ? 'text-sm' : ''}`}>{cat.name}</span>span>
+                                    <span className={`font-medium text-gray-900 ${depth > 0 ? 'text-sm' : ''}`}>{cat.name}</span>
                                                               )}
                                                 </div>
                                     </td>
-                                    <td className="px-4 py-3 text-gray-500 font-mono text-xs hidden md:table-cell">{cat.slug}</td>td>
+                                    <td className="px-4 py-3 text-gray-500 font-mono text-xs hidden md:table-cell">{cat.slug}</td>
                                     <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">
                                       {editingId === cat.id ? (
                                   <div className="flex flex-col gap-1">
@@ -125,7 +125,7 @@ export default function AdminCategoriesPage() {
                                                                       className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                                                                     <option value="">Sin categoría padre</option>
                                                     {allFlat.filter(f => f.id !== cat.id).map(f => (
-                                                                                            <option key={f.id} value={f.id}>{'\u00a0'.repeat(f.depth * 2)}{f.name}</option>option>
+                                                                                            <option key={f.id} value={f.id}>{'\u00a0'.repeat(f.depth * 2)}{f.name}</option>
                                                                                           ))}
                                                   </select>
                                   </div>
