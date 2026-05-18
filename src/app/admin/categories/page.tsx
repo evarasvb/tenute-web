@@ -226,7 +226,7 @@ export default function AdminCategoriesPage() {
                                             <tr key={i} className="border-b border-gray-100 animate-pulse">
                                                               <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-32" /></td>
                                                               <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 bg-gray-200 rounded w-24" /></td>
-                                                              <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 bg-gray-200 rounded w-48" /></
+                                                              <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 bg-gray-200 rounded w-48" /></td>
                                                               <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-10 ml-auto" /></td>
                                                               <td className="px-4 py-3"><div className="h-4 bg-gray-200 rounded w-16 ml-auto" /></td>
                                             </tr>
