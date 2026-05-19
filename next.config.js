@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  transpilePackages: ['p-limit', 'yocto-queue'],
+  experimental: {
+    serverComponentsExternalPackages: ['p-limit'],
+  },
   images: {
     remotePatterns: [
       {
