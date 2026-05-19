@@ -239,5 +239,5 @@ export default function AdminCategoriesPage() {
                 </div>
           </div>
         );
-}</>
+}
 }
