@@ -163,7 +163,7 @@ export default function AdminCategoriesPage() {
                                     </td>
                           </tr>
                     {hasChildren && isExpanded && cat.children.map(child => renderRow(child, depth + 1))}
-                  </>>
+                  </>
                 );
     }
 
