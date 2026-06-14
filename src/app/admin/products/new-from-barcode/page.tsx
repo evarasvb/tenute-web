@@ -519,33 +519,46 @@ export default function NewFromBarcodePage() {
         </div>
       )}
 
-      {step === 'saved' && (
-        <div className="space-y-4">
-          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-            <div className="text-4xl mb-2">✅</div>
-            <h2 className="text-lg font-bold text-green-800">
-              {lookupResult?.existing_product ? 'Producto ya existe' : 'Producto guardado'}
-            </h2>
-            <p className="text-green-700 mt-1">{savedProduct?.name}</p>
-            {lookupResult?.existing_product && (
-              <p className="text-sm text-green-600 mt-1">EAN {ean} ya esta en el catalogo</p>
-            )}
+        {step === 'saved' && (
+          <div className="space-y-4">
+            {/* Card estado */}
+            <div className={`rounded-xl p-5 border text-center ${lookupResult?.existing_product ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'}`}>
+              <div className="text-4xl mb-2">{lookupResult?.existing_product ? '✅' : '🎉'}</div>
+              <h2 className={`text-lg font-bold mb-1 ${lookupResult?.existing_product ? 'text-green-800' : 'text-blue-800'}`}>
+                {lookupResult?.existing_product ? 'Producto ya existe' : 'Producto guardado'}
+              </h2>
+              <p className={`text-sm font-semibold ${lookupResult?.existing_product ? 'text-green-700' : 'text-blue-700'}`}>
+                {savedProduct?.name || '—'}
+              </p>
+            </div>
+            {/* Detalle del producto */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              {savedProduct?.image_url && (
+                <div className="flex justify-center bg-gray-50 p-4 border-b border-gray-100">
+                  <img src={savedProduct.image_url} alt={savedProduct.name || 'Producto'} className="h-32 w-32 object-contain rounded-lg" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                </div>
+              )}
+              <div className="divide-y divide-gray-100 text-sm">
+                <div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">EAN</span><span className="font-mono text-gray-700 break-all">{lookupResult?.ean}</span></div>
+                {savedProduct?.name && (<div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">Nombre</span><span className="font-medium text-gray-900">{savedProduct.name}</span></div>)}
+                {(savedProduct as any)?.brand && (<div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">Marca</span><span className="text-gray-800">{(savedProduct as any).brand}</span></div>)}
+                {(savedProduct as any)?.description && (<div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">Descripción</span><span className="text-gray-700">{(savedProduct as any).description}</span></div>)}
+                {(savedProduct as any)?.category_name && (<div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">Categoría</span><span className="text-gray-800">{(savedProduct as any).category_name}</span></div>)}
+                {(savedProduct as any)?.price && (<div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">Precio</span><span className="font-semibold">${(savedProduct as any).price?.toLocaleString('es-CL')}</span></div>)}
+                {lookupResult?.source && lookupResult.source !== 'tenute' && (<div className="flex px-4 py-2.5 gap-3"><span className="text-gray-400 w-20 shrink-0">Fuente</span><span className="text-gray-400 italic text-xs">{lookupResult.source.replace(/_/g, ' ')}</span></div>)}
+              </div>
+            </div>
+            {/* Acciones */}
+            <div className="flex flex-col gap-2">
+              {savedProduct?.id && (
+                <button onClick={() => router.push('/admin/products/' + savedProduct!.id)} className="w-full py-3 bg-green-600 text-white rounded-xl font-semibold">
+                  {lookupResult?.existing_product ? '✏️ Editar producto' : '👁 Ver producto'}
+                </button>
+              )}
+              <button onClick={reset} className="w-full py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold">Escanear otro</button>
+            </div>
           </div>
-          <div className="flex gap-3">
-            <button onClick={reset} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold">
-              Escanear otro
-            </button>
-            {savedProduct?.id && (
-              <button
-                onClick={() => router.push('/admin/products/' + savedProduct.id)}
-                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold"
-              >
-                Ver producto
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }
