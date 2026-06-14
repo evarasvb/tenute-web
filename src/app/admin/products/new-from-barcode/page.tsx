@@ -6,9 +6,27 @@ import Image from 'next/image';
 import { normalizeBarcode } from '@/lib/validators';
 import { isValidGtinDigits, normalizeBarcodeDigits } from '@/lib/ean';
 
-// iOS Safari no soporta BarcodeDetector nativo.
-// Usamos @zxing/browser (JS puro) con dynamic import para no bloquearlo en build.
-// Fallback: input file capture="environment" que abre la camara de iOS.
+// iOS Safari no soporta la BarcodeDetector API nativa.
+// Soluciones:
+//   - Modo Foto: input[capture=environment] -> canvas -> ZXing WASM via CDN (cero dependencias npm)
+//   - Modo Camara continua: usa BarcodeDetector nativo si existe (Chrome/Android),
+//     o ZXing desde CDN como fallback
+// ZXing se carga desde unpkg solo si es necesario, sin bloquear el build.
+
+declare global {
+  interface Window {
+    ZXingBrowser?: {
+      BrowserMultiFormatReader: new () => {
+        decodeFromCanvas(canvas: HTMLCanvasElement): Promise<{ getText(): string }>;
+        decodeFromVideoElement(
+          el: HTMLVideoElement,
+          cb: (result: { getText(): string } | null, err: Error | undefined) => void
+        ): void;
+        reset(): void;
+      };
+    };
+  }
+}
 
 interface Category { id: string; name: string; }
 interface SuggestedData {
@@ -26,19 +44,31 @@ function slugify(str: string) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-// Detect iOS Safari
 function isIOS() {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+// Load ZXing from CDN if not already present
+async function loadZXing(): Promise<typeof window.ZXingBrowser | null> {
+  if (window.ZXingBrowser) return window.ZXingBrowser;
+  return new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js';
+    script.onload = () => resolve(window.ZXingBrowser || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+}
+
 export default function NewFromBarcodePage() {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const scanLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const readerRef = useRef<{ reset(): void } | null>(null);
   const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -48,7 +78,7 @@ export default function NewFromBarcodePage() {
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [manualEan, setManualEan] = useState('');
-  const [cameraStarted, setCameraStarted] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
 
   const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -66,23 +96,23 @@ export default function NewFromBarcodePage() {
   const [saveError, setSaveError] = useState('');
   const [savedProduct, setSavedProduct] = useState<{ id: string; name: string } | null>(null);
 
-  // On mount: detect iOS and switch to photo mode automatically
   useEffect(() => {
     if (isIOS()) setScannerMode('photo');
     fetch('/api/admin/categories').then(r => r.json()).then(setCategories);
   }, []);
 
   const stopCamera = useCallback(() => {
-    if (scanLoopRef.current) { clearInterval(scanLoopRef.current); scanLoopRef.current = null; }
+    if (scanTimerRef.current) { clearTimeout(scanTimerRef.current); scanTimerRef.current = null; }
+    if (readerRef.current) { try { readerRef.current.reset(); } catch { /* ok */ } readerRef.current = null; }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    setCameraStarted(false);
+    setCameraReady(false);
     setScannerStatus('');
   }, []);
 
   const handleLookup = useCallback(async (code: string) => {
     const digits = normalizeBarcodeDigits(code);
     if (!digits || !isValidGtinDigits(digits)) {
-      setLookupError('Codigo invalido (' + code + '). Se esperan 8-14 digitos EAN/UPC.');
+      setLookupError('Codigo invalido (' + code.substring(0,20) + '). Se esperan 8-14 digitos EAN/UPC.');
       return;
     }
     setEan(digits);
@@ -91,7 +121,7 @@ export default function NewFromBarcodePage() {
     setScannerStatus('Buscando ' + digits + '...');
     try {
       const res = await fetch('/api/admin/barcode-lookup?ean=' + encodeURIComponent(digits));
-      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || 'Error ' + res.status); }
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error((e as {error?:string}).error || 'Error ' + res.status); }
       const data: LookupResult = await res.json();
       setLookupResult(data);
       if (data.existing_product) {
@@ -113,8 +143,7 @@ export default function NewFromBarcodePage() {
     setScannerStatus('');
   }, []);
 
-  // ââ ZXing camera scanner (Chrome/Android/Desktop) âââââââââââââââââââââ
-  const startZxingCamera = useCallback(async () => {
+  const startCamera = useCallback(async () => {
     setScannerError('');
     setScannerStatus('Iniciando camara...');
     try {
@@ -123,11 +152,13 @@ export default function NewFromBarcodePage() {
       });
       streamRef.current = stream;
       if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-      setCameraStarted(true);
+      setCameraReady(true);
       setScannerStatus('Apunta al codigo de barras');
 
-      // Try native BarcodeDetector first (Chrome/Android)
-      const win = window as Window & { BarcodeDetector?: { new(o?:object): { detect(s:CanvasImageSource): Promise<{rawValue:string}[]> } } };
+      // Try native BarcodeDetector (Chrome, Android, desktop)
+      const win = window as Window & {
+        BarcodeDetector?: new (o?: object) => { detect(s: CanvasImageSource): Promise<{rawValue: string}[]> }
+      };
       if (win.BarcodeDetector) {
         const detector = new win.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
         const loop = async () => {
@@ -139,72 +170,62 @@ export default function NewFromBarcodePage() {
               const raw = normalizeBarcode(b.rawValue);
               if (raw === lastScanRef.current.code && now - lastScanRef.current.at < 3000) continue;
               lastScanRef.current = { code: raw, at: now };
-              stopCamera();
-              handleLookup(raw);
-              return;
+              stopCamera(); handleLookup(raw); return;
             }
-          } catch { /* ignore */ }
-          scanLoopRef.current = setTimeout(loop, 150) as unknown as ReturnType<typeof setInterval>;
+          } catch { /* ignore frame errors */ }
+          scanTimerRef.current = setTimeout(loop, 200);
         };
-        scanLoopRef.current = setTimeout(loop, 150) as unknown as ReturnType<typeof setInterval>;
+        scanTimerRef.current = setTimeout(loop, 200);
         return;
       }
 
-      // Fallback: ZXing via dynamic import
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const { BrowserMultiFormatReader } = await import('@zxing/browser').catch(() => ({ BrowserMultiFormatReader: null }));
-      if (!BrowserMultiFormatReader) {
+      // Fallback: ZXing from CDN
+      setScannerStatus('Cargando decoder...');
+      const ZXing = await loadZXing();
+      if (!ZXing) {
         stopCamera();
-        setScannerError('Usa el modo Foto o Manual para escanear.');
+        setScannerError('Camara no soportada en este navegador. Usa el modo Foto.');
         setScannerMode('photo');
         return;
       }
-      const reader = new BrowserMultiFormatReader();
+      const reader = new ZXing.BrowserMultiFormatReader();
+      readerRef.current = reader;
       if (videoRef.current) {
-        reader.decodeFromVideoElement(videoRef.current, (result: { getText(): string } | null, err: unknown) => {
+        setScannerStatus('Apunta al codigo de barras');
+        reader.decodeFromVideoElement(videoRef.current, (result, _err) => {
           if (result) {
             const raw = result.getText();
             const now = Date.now();
             if (raw === lastScanRef.current.code && now - lastScanRef.current.at < 3000) return;
             lastScanRef.current = { code: raw, at: now };
-            stopCamera();
-            handleLookup(raw);
-          }
-          if (err && err.name !== 'NotFoundException') {
-            // ignore frame errors
+            stopCamera(); handleLookup(raw);
           }
         });
-        // Store reader for cleanup
-        (streamRef.current as MediaStream & { _reader?: typeof reader })._reader = reader;
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
-      setScannerError('No se pudo acceder a la camara: ' + (msg || 'error desconocido') + '. Usa el modo Foto.');
+      setScannerError('No se pudo acceder a la camara' + (msg ? ': ' + msg : '') + '. Usa el modo Foto.');
       setScannerStatus('');
       setScannerMode('photo');
     }
   }, [stopCamera, handleLookup]);
 
   useEffect(() => {
-    if (scannerMode === 'camera' && step === 'scan') startZxingCamera();
+    if (scannerMode === 'camera' && step === 'scan') startCamera();
     else stopCamera();
     return () => { stopCamera(); };
-  }, [scannerMode, step, startZxingCamera, stopCamera]);
+  }, [scannerMode, step, startCamera, stopCamera]);
 
-  // ââ Photo capture (iOS / fallback) ââââââââââââââââââââââââââââââââââââ
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setScannerStatus('Analizando imagen...');
     setLookupError('');
     try {
-      // Draw to canvas and try to decode
       const img = document.createElement('img');
       const url = URL.createObjectURL(file);
       img.src = url;
       await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; });
-
       const canvas = canvasRef.current || document.createElement('canvas');
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
@@ -212,43 +233,40 @@ export default function NewFromBarcodePage() {
       ctx.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
 
-      // Try native BarcodeDetector (Chrome Android, not iOS)
-      const win = window as Window & { BarcodeDetector?: { new(o?:object): { detect(s:CanvasImageSource): Promise<{rawValue:string}[]> } } };
+      // Try native BarcodeDetector first
+      const win = window as Window & {
+        BarcodeDetector?: new (o?: object) => { detect(s: CanvasImageSource): Promise<{rawValue: string}[]> }
+      };
       if (win.BarcodeDetector) {
         const detector = new win.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
         const results = await detector.detect(canvas);
         if (results[0]?.rawValue) {
-          setScannerStatus('');
-          handleLookup(results[0].rawValue);
+          setScannerStatus(''); handleLookup(results[0].rawValue);
+          if (photoInputRef.current) photoInputRef.current.value = '';
           return;
         }
       }
 
-      // ZXing for image decoding (works on iOS)
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const { BrowserMultiFormatReader } = await import('@zxing/browser').catch(() => ({ BrowserMultiFormatReader: null }));
-      if (BrowserMultiFormatReader) {
+      // ZXing from CDN
+      const ZXing = await loadZXing();
+      if (ZXing) {
         try {
-          const reader = new BrowserMultiFormatReader();
+          const reader = new ZXing.BrowserMultiFormatReader();
           const result = await reader.decodeFromCanvas(canvas);
           if (result) {
-            setScannerStatus('');
-            handleLookup(result.getText());
+            setScannerStatus(''); handleLookup(result.getText());
+            if (photoInputRef.current) photoInputRef.current.value = '';
             return;
           }
-        } catch {
-          // not found
-        }
+        } catch { /* not found */ }
       }
 
       setScannerStatus('');
-      setLookupError('No se pudo leer el codigo en la foto. Intenta mas cerca y con buena luz, o usa el modo Manual.');
+      setLookupError('No se pudo leer el codigo. Intenta mas cerca con buena luz, o usa el modo Manual.');
     } catch {
       setScannerStatus('');
       setLookupError('Error al procesar la imagen.');
     }
-    // Reset input so same photo can be re-taken
     if (photoInputRef.current) photoInputRef.current.value = '';
   };
 
@@ -275,9 +293,9 @@ export default function NewFromBarcodePage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json() as { id?: string; product?: { id: string }; error?: string };
       if (!res.ok) throw new Error(data.error || 'Error al guardar');
-      setSavedProduct({ id: data.id || data.product?.id, name: name.trim() });
+      setSavedProduct({ id: data.id || data.product?.id || '', name: name.trim() });
       setStep('saved');
     } catch (err: unknown) { setSaveError(err instanceof Error ? err.message : 'Error'); }
     setSaving(false);
@@ -290,7 +308,8 @@ export default function NewFromBarcodePage() {
     setSavedProduct(null); setSaveError('');
   };
 
-  const modeLabel = (m: typeof scannerMode) => ({ camera: 'Camara', manual: 'Manual / USB', photo: 'Foto (iOS)' })[m];
+  const modeLabel = (m: typeof scannerMode) =>
+    ({ camera: 'Camara', manual: 'Manual / USB', photo: 'Foto (iOS)' }[m]);
 
   return (
     <div className="max-w-lg mx-auto space-y-6 pb-16">
@@ -306,7 +325,6 @@ export default function NewFromBarcodePage() {
 
       {step === 'scan' && (
         <div className="space-y-4">
-          {/* Mode tabs */}
           <div className="flex gap-1.5">
             {(['camera','photo','manual'] as const).map(m => (
               <button key={m} onClick={() => { setScannerMode(m); stopCamera(); }}
@@ -317,11 +335,10 @@ export default function NewFromBarcodePage() {
             ))}
           </div>
 
-          {/* Camera mode */}
           {scannerMode === 'camera' && (
             <div className="rounded-xl overflow-hidden bg-black relative aspect-video">
               <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-              {cameraStarted && (
+              {cameraReady && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="border-2 border-yellow-400 rounded-lg w-3/4 h-16 opacity-80" />
                 </div>
@@ -334,21 +351,14 @@ export default function NewFromBarcodePage() {
             </div>
           )}
 
-          {/* Photo mode (iOS) */}
           {scannerMode === 'photo' && (
             <div className="space-y-3">
               <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                Toca el boton para abrir la camara, encuadra el codigo de barras y toma la foto.
+                Toca el boton, apunta al codigo de barras y toma la foto.
               </p>
               <label className="block">
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handlePhotoCapture}
-                  className="hidden"
-                />
+                <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
+                  onChange={handlePhotoCapture} className="hidden" />
                 <span className="flex items-center justify-center gap-2 w-full py-4 bg-blue-600 text-white rounded-xl text-base font-semibold hover:bg-blue-700 cursor-pointer active:bg-blue-800">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -357,15 +367,6 @@ export default function NewFromBarcodePage() {
                   Tomar foto del codigo
                 </span>
               </label>
-              {scannerStatus && (
-                <div className="flex items-center gap-2 text-sm text-blue-600 animate-pulse">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                  </svg>
-                  {scannerStatus}
-                </div>
-              )}
             </div>
           )}
 
@@ -376,20 +377,14 @@ export default function NewFromBarcodePage() {
             </div>
           )}
 
-          {/* Manual mode */}
           {scannerMode === 'manual' && (
             <form onSubmit={handleManualSubmit} className="flex gap-2">
-              <input
-                ref={manualInputRef}
-                type="text"
-                value={manualEan}
+              <input ref={manualInputRef} type="text" value={manualEan}
                 onChange={e => setManualEan(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleManualSubmit(e as unknown as React.FormEvent); } }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleManualSubmit(e as unknown as React.FormEvent); }}}
                 placeholder="Escribe o escanea con pistola USB..."
                 className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-                inputMode="numeric"
-              />
+                autoFocus inputMode="numeric" />
               <button type="submit" disabled={!manualEan.trim()}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700">
                 Buscar
@@ -397,13 +392,13 @@ export default function NewFromBarcodePage() {
             </form>
           )}
 
-          {lookupLoading && (
+          {(lookupLoading || (scannerMode === 'photo' && scannerStatus)) && (
             <div className="flex items-center gap-2 text-sm text-blue-600 animate-pulse">
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
               </svg>
-              Consultando bases de datos...
+              {lookupLoading ? 'Consultando bases de datos...' : scannerStatus}
             </div>
           )}
           {lookupError && (
@@ -412,8 +407,6 @@ export default function NewFromBarcodePage() {
               <button onClick={() => setLookupError('')} className="ml-2 text-red-500">x</button>
             </div>
           )}
-
-          {/* Hidden canvas for image processing */}
           <canvas ref={canvasRef} className="hidden" />
         </div>
       )}
@@ -509,4 +502,4 @@ export default function NewFromBarcodePage() {
       )}
     </div>
   );
-              }
+                                                   }
