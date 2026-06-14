@@ -161,7 +161,7 @@ export default function AdminProductsPage() {
       const response = await fetch('/api/admin/images/audit?limit=2500');
       const data = (await response.json()) as ImageAuditResponse & { error?: string };
       if (!response.ok) {
-        throw new Error(data.error || 'No se pudo cargar auditoría de imágenes');
+        throw new Error(data.error || 'No se pudo cargar auditorÃ­a de imÃ¡genes');
       }
       const grouped: Record<string, ProductImageIssue[]> = {};
       for (const issue of data.issues || []) {
@@ -179,7 +179,7 @@ export default function AdminProductsPage() {
         setPage(1);
       }
     } catch (error: unknown) {
-      setImageAuditError(error instanceof Error ? error.message : 'Error cargando auditoría');
+      setImageAuditError(error instanceof Error ? error.message : 'Error cargando auditorÃ­a');
       setImageIssues({});
     } finally {
       setImageAuditLoading(false);
@@ -200,11 +200,11 @@ export default function AdminProductsPage() {
       case 'duplicate_url':
         return 'URL duplicada';
       case 'small_dimensions':
-        return 'Imagen pequeña';
+        return 'Imagen pequeÃ±a';
       case 'suspicious_domain':
         return 'Dominio sospechoso';
       case 'missing_gallery':
-        return 'Sin galería';
+        return 'Sin galerÃ­a';
       case 'missing_image':
       default:
         return 'Sin imagen';
@@ -481,6 +481,10 @@ export default function AdminProductsPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             {exporting ? 'Exportando...' : 'Excel'}
           </button>
+          <Link href="/admin/products/new-from-barcode" className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.24M11.56 8H7m0 0H5m2 0v12"/></svg>
+            Escanear codigo
+          </Link>
           <Link href="/admin/products/new" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
             Agregar
@@ -550,7 +554,7 @@ export default function AdminProductsPage() {
             disabled={imageAuditLoading}
             className="px-3 py-1.5 text-xs border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors"
           >
-            {imageAuditLoading ? 'Auditando...' : 'Auditar imágenes'}
+            {imageAuditLoading ? 'Auditando...' : 'Auditar imÃ¡genes'}
           </button>
           {imageAuditError && (
             <span className="text-xs text-red-600">{imageAuditError}</span>
@@ -738,7 +742,7 @@ export default function AdminProductsPage() {
             <div className="flex items-start justify-between gap-4 mb-3">
               <div>
                 <h3 className="text-lg font-semibold">Sugerencia masiva de EAN</h3>
-                <p className="text-xs text-gray-500">Solo productos sin código de barras. Revisa y aplica por confianza.</p>
+                <p className="text-xs text-gray-500">Solo productos sin cÃ³digo de barras. Revisa y aplica por confianza.</p>
               </div>
               <button onClick={() => setShowEanBulk(false)} className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">Cerrar</button>
             </div>
@@ -759,7 +763,7 @@ export default function AdminProductsPage() {
                     <th className="text-left px-3 py-2 font-medium text-gray-500">EAN sugerido</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-500">Confianza</th>
                     <th className="text-left px-3 py-2 font-medium text-gray-500">Fuente</th>
-                    <th className="text-right px-3 py-2 font-medium text-gray-500">Acción</th>
+                    <th className="text-right px-3 py-2 font-medium text-gray-500">AcciÃ³n</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -839,7 +843,7 @@ export default function AdminProductsPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-gray-500">
                         {candidate.source}
-                        {candidate.title ? ` · ${candidate.title}` : ''}
+                        {candidate.title ? ` Â· ${candidate.title}` : ''}
                       </p>
                       <p className="text-xs text-gray-400 truncate">{candidate.url}</p>
                     </div>
