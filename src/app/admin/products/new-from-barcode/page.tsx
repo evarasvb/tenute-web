@@ -3,27 +3,28 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { normalizeBarcode } from '@/lib/validators';
 import { isValidGtinDigits, normalizeBarcodeDigits } from '@/lib/ean';
 
-// iOS Safari no soporta la BarcodeDetector API nativa.
-// Soluciones:
-//   - Modo Foto: input[capture=environment] -> canvas -> ZXing WASM via CDN (cero dependencias npm)
-//   - Modo Camara continua: usa BarcodeDetector nativo si existe (Chrome/Android),
-//     o ZXing desde CDN como fallback
-// ZXing se carga desde unpkg solo si es necesario, sin bloquear el build.
-
+// ─── Typings for html5-qrcode UMD loaded from CDN ───────────────────────────
 declare global {
   interface Window {
-    ZXingBrowser?: {
-      BrowserMultiFormatReader: new () => {
-        decodeFromCanvas(canvas: HTMLCanvasElement): Promise<{ getText(): string }>;
-        decodeFromVideoElement(
-          el: HTMLVideoElement,
-          cb: (result: { getText(): string } | null, err: Error | undefined) => void
-        ): void;
-        reset(): void;
-      };
+    Html5Qrcode?: new (elementId: string) => {
+      start(
+        cameraIdOrConfig: { facingMode: string },
+        config: { fps: number; qrbox: number },
+        onSuccess: (text: string) => void,
+        onError?: (err: unknown) => void
+      ): Promise<void>;
+      stop(): Promise<void>;
+      clear(): void;
+    };
+    Html5QrcodeScanner?: new (
+      elementId: string,
+      config: { fps: number; qrbox: number; rememberLastUsedCamera: boolean },
+      verbose: boolean
+    ) => {
+      render(onSuccess: (text: string) => void, onError?: (err: unknown) => void): void;
+      clear(): Promise<void>;
     };
   }
 }
@@ -44,41 +45,28 @@ function slugify(str: string) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-function isIOS() {
-  if (typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-// Load ZXing from CDN if not already present
-async function loadZXing(): Promise<typeof window.ZXingBrowser | null> {
-  if (window.ZXingBrowser) return window.ZXingBrowser;
+async function loadHtml5Qrcode(): Promise<boolean> {
+  if (window.Html5Qrcode) return true;
   return new Promise((resolve) => {
     const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@zxing/browser@0.1.4/umd/index.min.js';
-    script.onload = () => resolve(window.ZXingBrowser || null);
-    script.onerror = () => resolve(null);
+    script.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    script.onload = () => resolve(!!window.Html5Qrcode);
+    script.onerror = () => resolve(false);
     document.head.appendChild(script);
   });
 }
 
 export default function NewFromBarcodePage() {
   const router = useRouter();
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const readerRef = useRef<{ reset(): void } | null>(null);
-  const lastScanRef = useRef<{ code: string; at: number }>({ code: '', at: 0 });
-  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const manualInputRef = useRef<HTMLInputElement>(null);
+  const scannerRef = useRef<{ stop(): Promise<void>; clear(): void } | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [step, setStep] = useState<'scan' | 'review' | 'saved'>('scan');
   const [scannerMode, setScannerMode] = useState<'camera' | 'manual' | 'photo'>('camera');
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [manualEan, setManualEan] = useState('');
-  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
 
   const [lookupResult, setLookupResult] = useState<LookupResult | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -97,22 +85,29 @@ export default function NewFromBarcodePage() {
   const [savedProduct, setSavedProduct] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    if (isIOS()) setScannerMode('photo');
-    fetch('/api/admin/categories').then(r => r.json()).then(setCategories);
+    fetch('/api/admin/categories').then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setCategories(d);
+    }).catch(() => {});
   }, []);
 
-  const stopCamera = useCallback(() => {
-    if (scanTimerRef.current) { clearTimeout(scanTimerRef.current); scanTimerRef.current = null; }
-    if (readerRef.current) { try { readerRef.current.reset(); } catch { /* ok */ } readerRef.current = null; }
-    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
-    setCameraReady(false);
+  const stopCamera = useCallback(async () => {
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop(); } catch { /* ok */ }
+      try { scannerRef.current.clear(); } catch { /* ok */ }
+      scannerRef.current = null;
+    }
+    setCameraActive(false);
     setScannerStatus('');
   }, []);
 
   const handleLookup = useCallback(async (code: string) => {
     const digits = normalizeBarcodeDigits(code);
-    if (!digits || !isValidGtinDigits(digits)) {
-      setLookupError('Codigo invalido (' + code.substring(0,20) + '). Se esperan 8-14 digitos EAN/UPC.');
+    if (!digits || digits.length < 8) {
+      setLookupError('Codigo muy corto. Se esperan al menos 8 digitos.');
+      return;
+    }
+    if (!isValidGtinDigits(digits)) {
+      setLookupError('Codigo invalido: ' + digits + '. Se esperan 8-14 digitos EAN/UPC.');
       return;
     }
     setEan(digits);
@@ -121,154 +116,79 @@ export default function NewFromBarcodePage() {
     setScannerStatus('Buscando ' + digits + '...');
     try {
       const res = await fetch('/api/admin/barcode-lookup?ean=' + encodeURIComponent(digits));
-      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error((e as {error?:string}).error || 'Error ' + res.status); }
+      if (res.status === 401) {
+        setLookupError('No autorizado. Por favor inicia sesion en /admin/login primero.');
+        setLookupLoading(false);
+        setScannerStatus('');
+        return;
+      }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error((e as { error?: string }).error || 'Error HTTP ' + res.status);
+      }
       const data: LookupResult = await res.json();
       setLookupResult(data);
       if (data.existing_product) {
         setStep('saved');
         setSavedProduct({ id: data.existing_product.id, name: data.existing_product.name });
       } else if (data.suggested) {
-        setName(data.suggested.name); setBrand(data.suggested.brand);
-        setDescription(data.suggested.description); setImageUrl(data.suggested.image_url);
-        if (data.suggested.price_ref) setPrice(String(Math.round(data.suggested.price_ref)));
+        setName(data.suggested.name || '');
+        setBrand(data.suggested.brand || '');
+        setDescription(data.suggested.description || '');
+        setImageUrl(data.suggested.image_url || '');
+        if (data.suggested.price_ref) setPrice(String(data.suggested.price_ref));
         setStep('review');
       } else {
-        setName(''); setBrand(''); setDescription(''); setImageUrl('');
+        setName('');
+        setBrand('');
+        setDescription('');
+        setImageUrl('');
         setStep('review');
       }
     } catch (err: unknown) {
       setLookupError(err instanceof Error ? err.message : 'Error al buscar');
+    } finally {
+      setLookupLoading(false);
+      setScannerStatus('');
     }
-    setLookupLoading(false);
-    setScannerStatus('');
   }, []);
+
+  useEffect(() => {
+    return () => { stopCamera(); };
+  }, [stopCamera]);
 
   const startCamera = useCallback(async () => {
     setScannerError('');
-    setScannerStatus('Iniciando camara...');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-      setCameraReady(true);
-      setScannerStatus('Apunta al codigo de barras');
-
-      // Try native BarcodeDetector (Chrome, Android, desktop)
-      const win = window as Window & {
-        BarcodeDetector?: new (o?: object) => { detect(s: CanvasImageSource): Promise<{rawValue: string}[]> }
-      };
-      if (win.BarcodeDetector) {
-        const detector = new win.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-        const loop = async () => {
-          if (!videoRef.current || !streamRef.current) return;
-          try {
-            const barcodes = await detector.detect(videoRef.current);
-            for (const b of barcodes) {
-              const now = Date.now();
-              const raw = normalizeBarcode(b.rawValue);
-              if (raw === lastScanRef.current.code && now - lastScanRef.current.at < 3000) continue;
-              lastScanRef.current = { code: raw, at: now };
-              stopCamera(); handleLookup(raw); return;
-            }
-          } catch { /* ignore frame errors */ }
-          scanTimerRef.current = setTimeout(loop, 200);
-        };
-        scanTimerRef.current = setTimeout(loop, 200);
-        return;
-      }
-
-      // Fallback: ZXing from CDN
-      setScannerStatus('Cargando decoder...');
-      const ZXing = await loadZXing();
-      if (!ZXing) {
-        stopCamera();
-        setScannerError('Camara no soportada en este navegador. Usa el modo Foto.');
-        setScannerMode('photo');
-        return;
-      }
-      const reader = new ZXing.BrowserMultiFormatReader();
-      readerRef.current = reader;
-      if (videoRef.current) {
-        setScannerStatus('Apunta al codigo de barras');
-        reader.decodeFromVideoElement(videoRef.current, (result, _err) => {
-          if (result) {
-            const raw = result.getText();
-            const now = Date.now();
-            if (raw === lastScanRef.current.code && now - lastScanRef.current.at < 3000) return;
-            lastScanRef.current = { code: raw, at: now };
-            stopCamera(); handleLookup(raw);
-          }
-        });
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '';
-      setScannerError('No se pudo acceder a la camara' + (msg ? ': ' + msg : '') + '. Usa el modo Foto.');
+    setScannerStatus('Cargando escaner...');
+    const loaded = await loadHtml5Qrcode();
+    if (!loaded || !window.Html5Qrcode) {
+      setScannerError('No se pudo cargar el escaner. Usa el modo Manual o Foto.');
       setScannerStatus('');
-      setScannerMode('photo');
+      return;
+    }
+    try {
+      const scanner = new window.Html5Qrcode('qr-reader');
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: 250 },
+        (text) => { stopCamera(); handleLookup(text); },
+        () => { /* ignore decode errors */ }
+      );
+      scannerRef.current = scanner;
+      setCameraActive(true);
+      setScannerStatus('Apunta al codigo de barras');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setScannerError('Camara no disponible: ' + msg + '. Usa Foto o Manual.');
+      setScannerStatus('');
     }
   }, [stopCamera, handleLookup]);
 
   useEffect(() => {
-    if (scannerMode === 'camera' && step === 'scan') startCamera();
-    else stopCamera();
-    return () => { stopCamera(); };
-  }, [scannerMode, step, startCamera, stopCamera]);
-
-  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setScannerStatus('Analizando imagen...');
-    setLookupError('');
-    try {
-      const img = document.createElement('img');
-      const url = URL.createObjectURL(file);
-      img.src = url;
-      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = rej; });
-      const canvas = canvasRef.current || document.createElement('canvas');
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
-      URL.revokeObjectURL(url);
-
-      // Try native BarcodeDetector first
-      const win = window as Window & {
-        BarcodeDetector?: new (o?: object) => { detect(s: CanvasImageSource): Promise<{rawValue: string}[]> }
-      };
-      if (win.BarcodeDetector) {
-        const detector = new win.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-        const results = await detector.detect(canvas);
-        if (results[0]?.rawValue) {
-          setScannerStatus(''); handleLookup(results[0].rawValue);
-          if (photoInputRef.current) photoInputRef.current.value = '';
-          return;
-        }
-      }
-
-      // ZXing from CDN
-      const ZXing = await loadZXing();
-      if (ZXing) {
-        try {
-          const reader = new ZXing.BrowserMultiFormatReader();
-          const result = await reader.decodeFromCanvas(canvas);
-          if (result) {
-            setScannerStatus(''); handleLookup(result.getText());
-            if (photoInputRef.current) photoInputRef.current.value = '';
-            return;
-          }
-        } catch { /* not found */ }
-      }
-
-      setScannerStatus('');
-      setLookupError('No se pudo leer el codigo. Intenta mas cerca con buena luz, o usa el modo Manual.');
-    } catch {
-      setScannerStatus('');
-      setLookupError('Error al procesar la imagen.');
+    if (scannerMode !== 'camera') {
+      stopCamera();
     }
-    if (photoInputRef.current) photoInputRef.current.value = '';
-  };
+  }, [scannerMode, stopCamera]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,45 +197,114 @@ export default function NewFromBarcodePage() {
     handleLookup(val);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) { setSaveError('El nombre es requerido'); return; }
-    setSaving(true); setSaveError('');
-    const slug = slugify(name) + '-' + Date.now().toString(36);
-    const payload = {
-      name: name.trim(), slug, brand: brand.trim() || null,
-      description: description.trim() || null, image_url: imageUrl.trim() || null,
-      price: parseFloat(price) || 0, ean: ean || null,
-      category_id: categoryId || null, active: true, stock: 0,
+  const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScannerStatus('Analizando imagen...');
+    setLookupError('');
+
+    // Try native BarcodeDetector first (Chrome/Android)
+    const win = window as Window & {
+      BarcodeDetector?: new (o: object) => { detect(s: ImageBitmapSource): Promise<Array<{rawValue: string}>> };
     };
+    if (win.BarcodeDetector) {
+      try {
+        const bitmap = await createImageBitmap(file);
+        const detector = new win.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39'] });
+        const results = await detector.detect(bitmap);
+        if (results[0]?.rawValue) {
+          setScannerStatus('');
+          if (photoInputRef.current) photoInputRef.current.value = '';
+          handleLookup(results[0].rawValue);
+          return;
+        }
+      } catch { /* fall through to ZXing */ }
+    }
+
+    // Load html5-qrcode for image scanning
+    const loaded = await loadHtml5Qrcode();
+    if (loaded && window.Html5Qrcode) {
+      try {
+        // Create a temporary hidden div for html5-qrcode file scan
+        let div = document.getElementById('qr-photo-reader');
+        if (!div) {
+          div = document.createElement('div');
+          div.id = 'qr-photo-reader';
+          div.style.display = 'none';
+          document.body.appendChild(div);
+        }
+        const scanner = new window.Html5Qrcode('qr-photo-reader');
+        // html5-qrcode can scan files directly
+        const scanFile = (scanner as unknown as { scanFile(f: File, showImage: boolean): Promise<string> }).scanFile;
+        if (typeof scanFile === 'function') {
+          const text = await scanFile.call(scanner, file, false);
+          scanner.clear();
+          setScannerStatus('');
+          if (photoInputRef.current) photoInputRef.current.value = '';
+          handleLookup(text);
+          return;
+        }
+        scanner.clear();
+      } catch { /* no barcode found */ }
+    }
+
+    setScannerStatus('');
+    setScannerError('No se pudo leer el codigo. Intenta mas cerca o usa modo Manual para ingresarlo.');
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  };
+
+  const handleSaveProduct = async () => {
+    if (!name.trim()) { setSaveError('El nombre es obligatorio'); return; }
+    setSaving(true);
+    setSaveError('');
     try {
+      const payload = {
+        name: name.trim(),
+        slug: slugify(name.trim()),
+        brand: brand.trim(),
+        description: description.trim(),
+        category_id: categoryId || null,
+        image_url: imageUrl.trim() || null,
+        price: price ? parseFloat(price) : 0,
+        stock: 0,
+        ean: ean || null,
+        created_from_barcode: true,
+      };
       const res = await fetch('/api/admin/products', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json() as { id?: string; product?: { id: string }; error?: string };
       if (!res.ok) throw new Error(data.error || 'Error al guardar');
       setSavedProduct({ id: data.id || data.product?.id || '', name: name.trim() });
       setStep('saved');
-    } catch (err: unknown) { setSaveError(err instanceof Error ? err.message : 'Error'); }
-    setSaving(false);
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const reset = () => {
     setStep('scan'); setLookupResult(null); setLookupError('');
     setManualEan(''); setEan('');
-    setName(''); setBrand(''); setDescription(''); setImageUrl(''); setPrice(''); setCategoryId('');
-    setSavedProduct(null); setSaveError('');
+    setName(''); setBrand(''); setDescription(''); setImageUrl(''); setPrice('');
+    setSavedProduct(null); setSaveError(''); setScannerError(''); setScannerStatus('');
+    stopCamera();
   };
 
   const modeLabel = (m: typeof scannerMode) =>
-    ({ camera: 'Camara', manual: 'Manual / USB', photo: 'Foto (iOS)' }[m]);
+    ({ camera: 'Camara', manual: 'Manual / USB', photo: 'Foto' })[m];
 
   return (
     <div className="max-w-lg mx-auto space-y-6 pb-16">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => router.push('/admin/products')} className="text-gray-500 hover:text-gray-800">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
         </button>
         <div>
           <h1 className="text-xl font-bold text-gray-900">Nuevo producto desde codigo</h1>
@@ -325,181 +314,238 @@ export default function NewFromBarcodePage() {
 
       {step === 'scan' && (
         <div className="space-y-4">
+          {/* Mode selector */}
           <div className="flex gap-1.5">
             {(['camera','photo','manual'] as const).map(m => (
-              <button key={m} onClick={() => { setScannerMode(m); stopCamera(); }}
-                className={'flex-1 py-2 rounded-lg text-xs font-medium border transition ' +
-                  (scannerMode === m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400')}>
+              <button
+                key={m}
+                onClick={() => setScannerMode(m)}
+                className={`flex-1 py-2 text-sm rounded-lg font-medium transition-colors ${
+                  scannerMode === m
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
                 {modeLabel(m)}
               </button>
             ))}
           </div>
 
+          {/* Camera mode */}
           {scannerMode === 'camera' && (
-            <div className="rounded-xl overflow-hidden bg-black relative aspect-video">
-              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-              {cameraReady && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="border-2 border-yellow-400 rounded-lg w-3/4 h-16 opacity-80" />
-                </div>
+            <div className="space-y-3">
+              {!cameraActive ? (
+                <button
+                  onClick={startCamera}
+                  className="w-full py-4 bg-blue-600 text-white rounded-xl font-semibold text-lg"
+                >
+                  Abrir camara
+                </button>
+              ) : (
+                <button
+                  onClick={stopCamera}
+                  className="w-full py-3 bg-red-500 text-white rounded-xl font-semibold"
+                >
+                  Detener camara
+                </button>
               )}
-              {scannerStatus && (
-                <div className="absolute bottom-2 inset-x-0 flex justify-center">
-                  <span className="bg-black/70 text-white text-xs px-3 py-1 rounded-full">{scannerStatus}</span>
-                </div>
-              )}
+              {/* html5-qrcode renders into this div */}
+              <div id="qr-reader" className="w-full rounded-xl overflow-hidden" />
             </div>
           )}
 
+          {/* Photo mode */}
           {scannerMode === 'photo' && (
             <div className="space-y-3">
-              <p className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                Toca el boton, apunta al codigo de barras y toma la foto.
-              </p>
-              <label className="block">
-                <input ref={photoInputRef} type="file" accept="image/*" capture="environment"
-                  onChange={handlePhotoCapture} className="hidden" />
-                <span className="flex items-center justify-center gap-2 w-full py-4 bg-blue-600 text-white rounded-xl text-base font-semibold hover:bg-blue-700 cursor-pointer active:bg-blue-800">
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Tomar foto del codigo
-                </span>
+              <label className="block w-full py-4 bg-blue-600 text-white rounded-xl font-semibold text-lg text-center cursor-pointer">
+                Tomar foto del codigo
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handlePhotoCapture}
+                />
               </label>
+              <p className="text-xs text-gray-500 text-center">
+                Toma una foto clara del codigo de barras
+              </p>
             </div>
           )}
 
-          {scannerError && (
-            <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700 flex justify-between">
-              <span>{scannerError}</span>
-              <button onClick={() => setScannerError('')} className="ml-2 text-orange-500">x</button>
-            </div>
-          )}
-
+          {/* Manual mode */}
           {scannerMode === 'manual' && (
-            <form onSubmit={handleManualSubmit} className="flex gap-2">
-              <input ref={manualInputRef} type="text" value={manualEan}
-                onChange={e => setManualEan(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleManualSubmit(e as unknown as React.FormEvent); }}}
-                placeholder="Escribe o escanea con pistola USB..."
-                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus inputMode="numeric" />
-              <button type="submit" disabled={!manualEan.trim()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 hover:bg-blue-700">
-                Buscar
+            <form onSubmit={handleManualSubmit} className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Codigo EAN / UPC
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={manualEan}
+                  onChange={e => setManualEan(e.target.value)}
+                  placeholder="Ej: 809516800865"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-lg font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!manualEan.trim() || lookupLoading}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-50"
+              >
+                {lookupLoading ? 'Buscando...' : 'Buscar'}
               </button>
             </form>
           )}
 
-          {(lookupLoading || (scannerMode === 'photo' && scannerStatus)) && (
-            <div className="flex items-center gap-2 text-sm text-blue-600 animate-pulse">
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-              {lookupLoading ? 'Consultando bases de datos...' : scannerStatus}
+          {/* Status / errors */}
+          {scannerStatus && (
+            <p className="text-sm text-blue-600 text-center">{scannerStatus}</p>
+          )}
+          {scannerError && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800">{scannerError}</p>
             </div>
           )}
           {lookupError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between">
-              <span>{lookupError}</span>
-              <button onClick={() => setLookupError('')} className="ml-2 text-red-500">x</button>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-700">{lookupError}</p>
             </div>
           )}
-          <canvas ref={canvasRef} className="hidden" />
+          {lookupLoading && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-gray-600">Consultando base de datos...</span>
+            </div>
+          )}
         </div>
       )}
 
-      {step === 'review' && (
-        <form onSubmit={handleSave} className="space-y-4">
-          {lookupResult ? (
-            <div className={'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ' +
-              (lookupResult.found ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>
-              {lookupResult.found ? 'Encontrado en ' + lookupResult.source : 'No encontrado: rellena manualmente'}
+      {step === 'review' && lookupResult && (
+        <div className="space-y-4">
+          {/* Status banner */}
+          <div className={`rounded-lg p-3 ${
+            lookupResult.found ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{lookupResult.found ? '✅' : '⚠️'}</span>
+              <div>
+                <p className="text-sm font-medium">
+                  {lookupResult.found
+                    ? 'Datos encontrados desde ' + lookupResult.source
+                    : 'Producto no encontrado - completa los datos manualmente'}
+                </p>
+                <p className="text-xs text-gray-500">EAN: {lookupResult.ean}</p>
+              </div>
             </div>
-          ) : (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-              No encontrado: rellena manualmente
-            </div>
-          )}
+          </div>
+
+          {/* Product image preview */}
           {imageUrl && (
             <div className="flex justify-center">
-              <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                <Image src={imageUrl} alt="Producto" fill className="object-contain p-2" unoptimized />
+              <div className="relative w-32 h-32 bg-gray-100 rounded-lg overflow-hidden">
+                <Image src={imageUrl} alt="Producto" fill className="object-contain" unoptimized />
               </div>
             </div>
           )}
-          <div className="bg-gray-50 rounded-lg px-3 py-2 text-xs text-gray-500 font-mono">EAN: {ean}</div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-            <input value={name} onChange={e => setName(e.target.value)} required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+
+          {/* Form fields */}
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+              <input value={name} onChange={e => setName(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Nombre del producto" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Marca</label>
+              <input value={brand} onChange={e => setBrand(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Marca" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descripcion</label>
+              <textarea value={description} onChange={e => setDescription(e.target.value)}
+                rows={2}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Descripcion del producto" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">URL imagen</label>
+              <input value={imageUrl} onChange={e => setImageUrl(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="https://..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                <input type="number" value={price} onChange={e => setPrice(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="0" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
+                <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Sin categoria</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Marca</label>
-            <input value={brand} onChange={e => setBrand(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Descripcion</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-            <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Sin categoria</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Precio (CLP)</label>
-            <input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} placeholder="0"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">URL imagen</label>
-            <input value={imageUrl} onChange={e => setImageUrl(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          {saveError && <p className="text-sm text-red-600">{saveError}</p>}
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={reset}
-              className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
-              Volver
+
+          {saveError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-700">{saveError}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button onClick={reset} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold">
+              Cancelar
             </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60">
-              {saving ? 'Guardando...' : 'Guardar en catalogo'}
+            <button
+              onClick={handleSaveProduct}
+              disabled={saving || !name.trim()}
+              className="flex-1 py-3 bg-green-600 text-white rounded-xl font-semibold disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Guardar producto'}
             </button>
           </div>
-        </form>
+        </div>
       )}
 
-      {step === 'saved' && savedProduct && (
-        <div className="text-center space-y-4 py-8">
-          <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-            <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-            </svg>
+      {step === 'saved' && (
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+            <div className="text-4xl mb-2">✅</div>
+            <h2 className="text-lg font-bold text-green-800">
+              {lookupResult?.existing_product ? 'Producto ya existe' : 'Producto guardado'}
+            </h2>
+            <p className="text-green-700 mt-1">{savedProduct?.name}</p>
+            {lookupResult?.existing_product && (
+              <p className="text-sm text-green-600 mt-1">EAN {ean} ya esta en el catalogo</p>
+            )}
           </div>
-          <div>
-            <p className="font-semibold text-gray-900">{lookupResult?.existing_product ? 'Este producto ya existe' : 'Producto guardado'}</p>
-            <p className="text-sm text-gray-500 mt-1">{savedProduct.name}</p>
-          </div>
-          <div className="flex gap-2 justify-center">
-            <button onClick={reset} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+          <div className="flex gap-3">
+            <button onClick={reset} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold">
               Escanear otro
             </button>
-            <button onClick={() => router.push('/admin/products/' + savedProduct.id)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-              Ver producto
-            </button>
+            {savedProduct?.id && (
+              <button
+                onClick={() => router.push('/admin/products/' + savedProduct.id)}
+                className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-semibold"
+              >
+                Ver producto
+              </button>
+            )}
           </div>
         </div>
       )}
     </div>
   );
-                                                   }
+}
