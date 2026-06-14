@@ -113,7 +113,7 @@ export default function NewFromBarcodePage() {
     setScannerStatus('');
   }, []);
 
-  // ── ZXing camera scanner (Chrome/Android/Desktop) ─────────────────────
+  // ââ ZXing camera scanner (Chrome/Android/Desktop) âââââââââââââââââââââ
   const startZxingCamera = useCallback(async () => {
     setScannerError('');
     setScannerStatus('Iniciando camara...');
@@ -151,6 +151,8 @@ export default function NewFromBarcodePage() {
       }
 
       // Fallback: ZXing via dynamic import
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       const { BrowserMultiFormatReader } = await import('@zxing/browser').catch(() => ({ BrowserMultiFormatReader: null }));
       if (!BrowserMultiFormatReader) {
         stopCamera();
@@ -160,7 +162,7 @@ export default function NewFromBarcodePage() {
       }
       const reader = new BrowserMultiFormatReader();
       if (videoRef.current) {
-        reader.decodeFromVideoElement(videoRef.current, (result, err) => {
+        reader.decodeFromVideoElement(videoRef.current, (result: { getText(): string } | null, err: unknown) => {
           if (result) {
             const raw = result.getText();
             const now = Date.now();
@@ -190,7 +192,7 @@ export default function NewFromBarcodePage() {
     return () => { stopCamera(); };
   }, [scannerMode, step, startZxingCamera, stopCamera]);
 
-  // ── Photo capture (iOS / fallback) ────────────────────────────────────
+  // ââ Photo capture (iOS / fallback) ââââââââââââââââââââââââââââââââââââ
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -223,6 +225,8 @@ export default function NewFromBarcodePage() {
       }
 
       // ZXing for image decoding (works on iOS)
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       const { BrowserMultiFormatReader } = await import('@zxing/browser').catch(() => ({ BrowserMultiFormatReader: null }));
       if (BrowserMultiFormatReader) {
         try {
