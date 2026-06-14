@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { createBarcodeDetector } from '@/lib/barcode-detector';
-import { normalizeBarcodeDigits, validateBarcode } from '@/lib/validators';
+import { normalizeBarcode } from '@/lib/validators';
+import { isValidGtinDigits, normalizeBarcodeDigits } from '@/lib/ean';
 
 interface Category { id: string; name: string; }
 
@@ -28,7 +29,7 @@ interface LookupResult {
 function slugify(str: string) {
   return str
     .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 }
@@ -43,7 +44,6 @@ export default function NewFromBarcodePage() {
 
   const [step, setStep] = useState<'scan' | 'review' | 'saved'>('scan');
   const [scannerMode, setScannerMode] = useState<'camera' | 'manual'>('camera');
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerStatus, setScannerStatus] = useState('');
   const [scannerError, setScannerError] = useState('');
   const [manualEan, setManualEan] = useState('');
@@ -75,19 +75,26 @@ export default function NewFromBarcodePage() {
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     scanLoopRef.current = null;
     streamRef.current = null;
-    setScannerOpen(false);
     setScannerStatus('');
   }, []);
 
   const handleLookup = useCallback(async (code: string) => {
+    // Normalize: remove all non-digit chars
     const digits = normalizeBarcodeDigits(code);
-    if (!digits) return;
+    if (!digits || !isValidGtinDigits(digits)) {
+      setLookupError('Codigo invalido: ' + code + ' (se esperan 8-14 digitos)');
+      return;
+    }
     setEan(digits);
     setLookupLoading(true);
     setLookupError('');
     setScannerStatus('Buscando ' + digits + '...');
     try {
-      const res = await fetch('/api/admin/barcode-lookup?ean=' + digits);
+      const res = await fetch('/api/admin/barcode-lookup?ean=' + encodeURIComponent(digits));
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Error ' + res.status);
+      }
       const data: LookupResult = await res.json();
       setLookupResult(data);
       if (data.existing_product) {
@@ -104,8 +111,8 @@ export default function NewFromBarcodePage() {
         setName(''); setBrand(''); setDescription(''); setImageUrl('');
         setStep('review');
       }
-    } catch {
-      setLookupError('Error al buscar el codigo. Intenta nuevamente.');
+    } catch (err: unknown) {
+      setLookupError(err instanceof Error ? err.message : 'Error al buscar el codigo');
     }
     setLookupLoading(false);
     setScannerStatus('');
@@ -121,45 +128,53 @@ export default function NewFromBarcodePage() {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      setScannerOpen(true);
       setScannerStatus('Apunta al codigo de barras');
-      const detector = createBarcodeDetector();
+      // FIX: createBarcodeDetector is async, must await
+      const detector = await createBarcodeDetector();
       const loop = async () => {
         if (!videoRef.current || !streamRef.current) return;
         try {
           const barcodes = await detector.detect(videoRef.current);
           for (const b of barcodes) {
             const now = Date.now();
-            const raw = normalizeBarcodeDigits(b.rawValue);
+            const raw = normalizeBarcode(b.rawValue);
             if (raw === lastScanRef.current.code && now - lastScanRef.current.at < 3000) continue;
-            if (!validateBarcode(raw)) continue;
             lastScanRef.current = { code: raw, at: now };
             stopCamera();
             handleLookup(raw);
             return;
           }
-        } catch { /* ignore */ }
+        } catch { /* ignore frame errors */ }
         scanLoopRef.current = requestAnimationFrame(loop);
       };
       scanLoopRef.current = requestAnimationFrame(loop);
-    } catch {
-      setScannerError('No se pudo acceder a la camara. Usa el modo manual.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('soportado') || msg.includes('BarcodeDetector')) {
+        setScannerError('Tu navegador no soporta deteccion automatica. Usa el modo Manual.');
+      } else {
+        setScannerError('No se pudo acceder a la camara. Usa el modo manual.');
+      }
       setScannerStatus('');
       setScannerMode('manual');
     }
   }, [stopCamera, handleLookup]);
 
   useEffect(() => {
-    if (scannerMode === 'camera' && step === 'scan') startCamera();
-    else stopCamera();
-    return () => stopCamera();
+    if (scannerMode === 'camera' && step === 'scan') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => { stopCamera(); };
   }, [scannerMode, step, startCamera, stopCamera]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const digits = normalizeBarcodeDigits(manualEan);
-    if (!digits) return;
-    handleLookup(digits);
+    const val = manualEan.trim();
+    if (!val) return;
+    // Accept raw scan (may have non-digit chars from some pistols)
+    handleLookup(val);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -170,8 +185,8 @@ export default function NewFromBarcodePage() {
     const slug = slugify(name) + '-' + Date.now().toString(36);
     const payload = {
       name: name.trim(), slug,
-      brand: brand.trim(),
-      description: description.trim(),
+      brand: brand.trim() || null,
+      description: description.trim() || null,
       image_url: imageUrl.trim() || null,
       price: parseFloat(price) || 0,
       ean: ean || null,
@@ -186,7 +201,7 @@ export default function NewFromBarcodePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al guardar');
-      setSavedProduct({ id: data.id || data.product?.id, name });
+      setSavedProduct({ id: data.id || data.product?.id, name: name.trim() });
       setStep('saved');
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Error al guardar');
@@ -213,6 +228,7 @@ export default function NewFromBarcodePage() {
         </div>
       </div>
 
+      {/* PASO 1: ESCANEAR */}
       {step === 'scan' && (
         <div className="space-y-4">
           <div className="flex gap-2">
@@ -245,9 +261,14 @@ export default function NewFromBarcodePage() {
             <form onSubmit={handleManualSubmit} className="flex gap-2">
               <input
                 ref={manualInputRef}
-                type="text" inputMode="numeric" value={manualEan}
+                type="text"
+                value={manualEan}
                 onChange={e => setManualEan(e.target.value)}
-                placeholder="Escanea o escribe el EAN/UPC..."
+                onKeyDown={e => {
+                  // Pistola USB sends Enter after scan
+                  if (e.key === 'Enter') { e.preventDefault(); handleManualSubmit(e as unknown as React.FormEvent); }
+                }}
+                placeholder="Escanea con pistola o escribe el EAN..."
                 className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -267,15 +288,26 @@ export default function NewFromBarcodePage() {
               Consultando bases de datos...
             </div>
           )}
-          {lookupError && <p className="text-sm text-red-600">{lookupError}</p>}
+          {lookupError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between">
+              <span>{lookupError}</span>
+              <button onClick={() => setLookupError('')} className="text-red-500 hover:text-red-700 ml-2">x</button>
+            </div>
+          )}
         </div>
       )}
 
+      {/* PASO 2: REVISAR Y GUARDAR */}
       {step === 'review' && (
         <form onSubmit={handleSave} className="space-y-4">
           {lookupResult && (
             <div className={'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ' + (lookupResult.found ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>
               {lookupResult.found ? 'Encontrado en ' + lookupResult.source : 'No encontrado: rellena manualmente'}
+            </div>
+          )}
+          {!lookupResult && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+              No encontrado: rellena manualmente
             </div>
           )}
           {imageUrl && (
@@ -333,6 +365,7 @@ export default function NewFromBarcodePage() {
         </form>
       )}
 
+      {/* PASO 3: CONFIRMACION */}
       {step === 'saved' && savedProduct && (
         <div className="text-center space-y-4 py-8">
           <div className="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mx-auto">
@@ -364,4 +397,4 @@ export default function NewFromBarcodePage() {
       )}
     </div>
   );
-}
+    }
