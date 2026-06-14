@@ -29,12 +29,26 @@ export interface BarcodeLookupResult {
 
 type Suggested = BarcodeLookupResult['suggested'];
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
 const FETCH_OPTS = { next: { revalidate: 0 }, signal: AbortSignal.timeout(8000) } as const;
 
 function safe(str: unknown): string {
   return typeof str === 'string' ? str.trim() : '';
+}
+
+function cleanTitle(title: string): string {
+  if (!title) return '';
+  return title
+    .replace(/\s*[|·—–\-]\s*.{0,60}$/, '') // Remove "| Brand" suffixes
+    .replace(/\$[\d.,]+/, '')                 // Remove prices
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .substring(0, 120);
+}
+
+function extractPrice(text: string): number | null {
+  const m = text.match(/\$\s*([\d]{1,3}(?:[.,]\d{3})*)(?:[.,]\d{1,2})?/);
+  if (!m) return null;
+  return parseFloat(m[1].replace(/[.,]/g, ''));
 }
 
 // ── Proveedor 1: Open Food Facts ───────────────────────────────────────────
@@ -62,7 +76,7 @@ async function lookupOFF(ean: string): Promise<Suggested | null> {
   } catch { return null; }
 }
 
-// ── Proveedor 2: Open Product Data (okfn) ─────────────────────────────────
+// ── Proveedor 2: Open Product Data ────────────────────────────────────────
 async function lookupOpenProductData(ean: string): Promise<Suggested | null> {
   try {
     const res = await fetch(`https://product.okfn.org/api/v0/product/${ean}`, FETCH_OPTS);
@@ -100,7 +114,7 @@ async function lookupUpcItemDb(ean: string): Promise<Suggested | null> {
   } catch { return null; }
 }
 
-// ── Proveedor 4: EAN-Search.org (tier gratuito: 20/día) ───────────────────
+// ── Proveedor 4: EAN-Search.org ───────────────────────────────────────────
 async function lookupEanSearch(ean: string): Promise<Suggested | null> {
   const apiKey = process.env.EAN_SEARCH_API_KEY;
   if (!apiKey) return null;
@@ -124,7 +138,7 @@ async function lookupEanSearch(ean: string): Promise<Suggested | null> {
   } catch { return null; }
 }
 
-// ── Proveedor 5: Go-UPC (mejor cobertura LATAM) ───────────────────────────
+// ── Proveedor 5: Go-UPC ────────────────────────────────────────────────────
 async function lookupGoUpc(ean: string): Promise<Suggested | null> {
   const apiKey = process.env.BARCODE_API_KEY;
   if (!apiKey) return null;
@@ -148,7 +162,7 @@ async function lookupGoUpc(ean: string): Promise<Suggested | null> {
   } catch { return null; }
 }
 
-// ── Proveedor 6: Barcode Lookup ────────────────────────────────────────────
+// ── Proveedor 6: Barcode Lookup ───────────────────────────────────────────
 async function lookupBarcodeLookup(ean: string): Promise<Suggested | null> {
   const apiKey = process.env.BARCODE_LOOKUP_API_KEY;
   if (!apiKey) return null;
@@ -173,8 +187,6 @@ async function lookupBarcodeLookup(ean: string): Promise<Suggested | null> {
 }
 
 // ── Proveedor 7: Google Custom Search API ─────────────────────────────────
-// Gratis: 100 búsquedas/día. Requiere GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_CX
-// Configurar en: https://programmablesearchengine.google.com/
 async function lookupGoogleSearch(ean: string): Promise<Suggested | null> {
   const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_SEARCH_CX;
@@ -189,100 +201,99 @@ async function lookupGoogleSearch(ean: string): Promise<Suggested | null> {
     const data = await res.json();
     const item = data?.items?.[0];
     if (!item?.title) return null;
-
-    // Extract price from snippet if present (e.g. "$490")
-    const priceMatch = (item.snippet || '').match(/\$([\d.,]+)/);
-    const priceRef = priceMatch ? parseFloat(priceMatch[1].replace(/[.,]/g, '')) : null;
-
-    // Try to get image from pagemap
-    const image = item.pagemap?.cse_image?.[0]?.src
-      || item.pagemap?.product?.[0]?.image
-      || '';
-
-    // Extract brand from metatags if available
-    const brand = item.pagemap?.metatags?.[0]?.['og:site_name']
-      || item.pagemap?.product?.[0]?.brand
-      || '';
-
-    const description = item.snippet
-      ? item.snippet.replace(/\n/g, ' ').trim()
-      : '';
-
-    const name = cleanProductName(item.title);
+    const image = item.pagemap?.cse_image?.[0]?.src || item.pagemap?.product?.[0]?.image || '';
+    const brand = item.pagemap?.metatags?.[0]?.['og:site_name'] || item.pagemap?.product?.[0]?.brand || '';
+    const snippet = safe(item.snippet).replace(/\n/g, ' ');
+    const name = cleanTitle(item.title);
     if (!name) return null;
-
     return {
       name,
       brand: safe(brand),
-      description,
+      description: snippet,
       category: '',
       image_url: safe(image),
-      price_ref: priceRef,
+      price_ref: extractPrice(snippet),
     };
   } catch { return null; }
 }
 
-// ── Proveedor 8: DuckDuckGo scraping (sin API key, fallback final) ─────────
-// Usa el endpoint de búsqueda HTML de DuckDuckGo y extrae el primer snippet.
-// Sin límite de uso, pero más frágil ante cambios de HTML.
-async function lookupDuckDuckGo(ean: string): Promise<Suggested | null> {
+// ── Proveedor 8: Búsqueda web sin API key ─────────────────────────────────
+// Usa el sitemap/JSON de resultados de búsqueda de SerpApi (plan gratuito: 100/mes)
+// O el endpoint JSON de búsqueda de Brave Search (gratuito: 2000/mes)
+async function lookupBraveSearch(ean: string): Promise<Suggested | null> {
+  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
+  if (!apiKey) return null;
   try {
-    const query = encodeURIComponent(ean + ' producto descripcion');
+    const query = encodeURIComponent(ean + ' producto descripcion marca');
     const res = await fetch(
-      `https://html.duckduckgo.com/html/?q=${query}`,
+      `https://api.search.brave.com/res/v1/web/search?q=${query}&count=3`,
       {
         ...FETCH_OPTS,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; TenuteBot/1.0; +https://tenute.cl)',
-          'Accept': 'text/html',
+          'Accept': 'application/json',
+          'Accept-Encoding': 'gzip',
+          'X-Subscription-Token': apiKey,
         },
       }
     );
     if (!res.ok) return null;
-    const html = await res.text();
-
-    // Extract first result title and snippet using regex (no DOM parser needed)
-    const titleMatch = html.match(/class="result__title"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/);
-    const snippetMatch = html.match(/class="result__snippet"[^>]*>([^<]+(?:<[^>]+>[^<]*<\/[^>]+>[^<]*)*)<\/a>/);
-
-    // Simpler regex for DuckDuckGo HTML structure
-    const results = html.match(/result__a[^>]*>([^<]{5,80})<\/a>/g);
-    const snippets = html.match(/result__snippet[^>]*>([^<]{10,200})</g);
-
-    if (!results || results.length === 0) return null;
-
-    const firstTitle = (titleMatch?.[1] || (results[0] || '').replace(/result__a[^>]*>/, '').replace(/<\/a>/, '')).trim();
-    const firstSnippet = snippetMatch?.[1]?.replace(/<[^>]+>/g, ' ').trim()
-      || (snippets?.[0] || '').replace(/result__snippet[^>]*>/, '').trim();
-
-    const name = cleanProductName(firstTitle);
-    if (!name || name.length < 3) return null;
-
-    // Try to extract price from snippet
-    const priceMatch = firstSnippet.match(/\$([\d.,]+)/);
-    const priceRef = priceMatch ? parseFloat(priceMatch[1].replace(/[.,]/g, '')) : null;
-
+    const data = await res.json();
+    const result = data?.web?.results?.[0];
+    if (!result?.title) return null;
+    const name = cleanTitle(result.title);
+    if (!name) return null;
+    const snippet = safe(result.description);
+    const thumbnail = result.thumbnail?.src || result.profile?.img || '';
     return {
       name,
       brand: '',
-      description: firstSnippet.substring(0, 300),
+      description: snippet,
       category: '',
-      image_url: '',
-      price_ref: priceRef,
+      image_url: safe(thumbnail),
+      price_ref: extractPrice(snippet),
     };
   } catch { return null; }
 }
 
-// Limpia el titulo de un resultado de busqueda para obtener solo el nombre del producto
-function cleanProductName(title: string): string {
-  if (!title) return '';
-  // Remove common suffixes: "| Brand", "- Brand", "· Brand", prices, etc.
-  return title
-    .replace(/\s*[|·—–-].*$/, '')
-    .replace(/\$[\d.,]+/, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-    .substring(0, 120);
+// ── Proveedor 9: SerpAPI (100 búsquedas/mes gratis) ──────────────────────
+async function lookupSerpApi(ean: string): Promise<Suggested | null> {
+  const apiKey = process.env.SERP_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const query = encodeURIComponent(ean);
+    const res = await fetch(
+      `https://serpapi.com/search.json?engine=google&q=${query}&api_key=${apiKey}&num=3`,
+      FETCH_OPTS
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Try shopping results first (best product data)
+    const shopping = data?.shopping_results?.[0];
+    if (shopping?.title) {
+      return {
+        name: cleanTitle(shopping.title),
+        brand: safe(shopping.source || ''),
+        description: safe(shopping.snippet || ''),
+        category: '',
+        image_url: safe(shopping.thumbnail || ''),
+        price_ref: typeof shopping.price === 'string'
+          ? parseFloat(shopping.price.replace(/[^0-9.]/g, '')) || null
+          : null,
+      };
+    }
+    // Fallback to organic results
+    const organic = data?.organic_results?.[0];
+    if (!organic?.title) return null;
+    const snippet = safe(organic.snippet);
+    return {
+      name: cleanTitle(organic.title),
+      brand: '',
+      description: snippet,
+      category: '',
+      image_url: safe(organic.thumbnail || ''),
+      price_ref: extractPrice(snippet),
+    };
+  } catch { return null; }
 }
 
 // ── Handler principal ──────────────────────────────────────────────────────
@@ -298,7 +309,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'EAN invalido: ' + raw }, { status: 400 });
   }
 
-  // 1. Buscar en el catálogo propio de Tenute (siempre primero)
+  // 1. Catálogo propio (siempre primero)
   const supabase = createAdminClient();
   const { data: existing } = await supabase
     .from('products')
@@ -308,64 +319,43 @@ export async function GET(req: NextRequest) {
 
   if (existing) {
     return NextResponse.json({
-      ean,
-      found: true,
-      source: 'tenute',
-      existing_product: existing,
+      ean, found: true, source: 'tenute', existing_product: existing,
     } satisfies BarcodeLookupResult);
   }
 
-  // 2. APIs con API key (en paralelo) — mejor cobertura
-  const [goUpcResult, barcodeLookupResult, eanSearchResult] = await Promise.all([
+  // 2. APIs con key dedicada (en paralelo)
+  const [goUpcR, barcodeR, eanR] = await Promise.all([
     lookupGoUpc(ean),
     lookupBarcodeLookup(ean),
     lookupEanSearch(ean),
   ]);
+  if (goUpcR) return NextResponse.json({ ean, found: true, source: 'go_upc', suggested: goUpcR } satisfies BarcodeLookupResult);
+  if (barcodeR) return NextResponse.json({ ean, found: true, source: 'barcode_lookup', suggested: barcodeR } satisfies BarcodeLookupResult);
+  if (eanR) return NextResponse.json({ ean, found: true, source: 'ean_search', suggested: eanR } satisfies BarcodeLookupResult);
 
-  if (goUpcResult) {
-    return NextResponse.json({ ean, found: true, source: 'go_upc', suggested: goUpcResult } satisfies BarcodeLookupResult);
-  }
-  if (barcodeLookupResult) {
-    return NextResponse.json({ ean, found: true, source: 'barcode_lookup', suggested: barcodeLookupResult } satisfies BarcodeLookupResult);
-  }
-  if (eanSearchResult) {
-    return NextResponse.json({ ean, found: true, source: 'ean_search', suggested: eanSearchResult } satisfies BarcodeLookupResult);
-  }
-
-  // 3. APIs gratuitas (en paralelo)
-  const [offResult, opdResult, upcResult] = await Promise.all([
+  // 3. APIs gratuitas de productos (en paralelo)
+  const [offR, opdR, upcR] = await Promise.all([
     lookupOFF(ean),
     lookupOpenProductData(ean),
     lookupUpcItemDb(ean),
   ]);
-
-  const freeResult = offResult ?? opdResult ?? upcResult;
-  if (freeResult) {
-    const source = offResult ? 'open_food_facts' : opdResult ? 'open_product_data' : 'upcitemdb';
-    return NextResponse.json({ ean, found: true, source, suggested: freeResult } satisfies BarcodeLookupResult);
+  const freeR = offR ?? opdR ?? upcR;
+  if (freeR) {
+    const src = offR ? 'open_food_facts' : opdR ? 'open_product_data' : 'upcitemdb';
+    return NextResponse.json({ ean, found: true, source: src, suggested: freeR } satisfies BarcodeLookupResult);
   }
 
-  // 4. Fallback final: búsqueda en la web
-  // Primero Google Custom Search (si hay key), luego DuckDuckGo scraping
-  const [googleResult, ddgResult] = await Promise.all([
+  // 4. Búsqueda web — el fallback final (en paralelo, usa lo que esté disponible)
+  const [googleR, braveR, serpR] = await Promise.all([
     lookupGoogleSearch(ean),
-    lookupDuckDuckGo(ean),
+    lookupBraveSearch(ean),
+    lookupSerpApi(ean),
   ]);
-
-  const webResult = googleResult ?? ddgResult;
-  if (webResult) {
-    return NextResponse.json({
-      ean,
-      found: true,
-      source: 'web_search',
-      suggested: webResult,
-    } satisfies BarcodeLookupResult);
+  const webR = googleR ?? braveR ?? serpR;
+  if (webR) {
+    return NextResponse.json({ ean, found: true, source: 'web_search', suggested: webR } satisfies BarcodeLookupResult);
   }
 
-  // Nada encontrado — igual devolver el EAN para que el usuario llene el formulario
-  return NextResponse.json({
-    ean,
-    found: false,
-    source: 'not_found',
-  } satisfies BarcodeLookupResult);
+  // 5. Nada encontrado — devolver EAN para que el usuario complete manualmente
+  return NextResponse.json({ ean, found: false, source: 'not_found' } satisfies BarcodeLookupResult);
 }
