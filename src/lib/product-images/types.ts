@@ -45,7 +45,7 @@ export interface ProductImageAuditResult {
 
 export interface ImageCandidate {
   url: string;
-  source: 'mercadolibre' | 'bing' | 'falabella' | 'sodimac';
+  source: 'mercadolibre' | 'bing' | 'falabella' | 'sodimac' | 'dimerc' | 'prisa';
   title?: string;
 }
 
