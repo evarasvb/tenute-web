@@ -129,9 +129,14 @@ export default function NewFromBarcodePage() {
       const data: LookupResult = await res.json();
       setLookupResult(data);
       if (data.existing_product) {
-        setStep('saved');
-        setSavedProduct({ id: data.existing_product.id, name: data.existing_product.name });
-      } else if (data.suggested) {
+          setSavedProduct({
+            id: data.existing_product.id,
+            name: data.existing_product.name,
+            slug: data.existing_product.slug,
+            image_url: data.existing_product.image_url,
+            ...(data.existing_product as any),
+          });
+          setStep('saved');
         setName(data.suggested.name || '');
         setBrand(data.suggested.brand || '');
         setDescription(data.suggested.description || '');
