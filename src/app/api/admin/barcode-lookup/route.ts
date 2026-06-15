@@ -16,6 +16,10 @@ export interface BarcodeLookupResult {
       name: string;
       slug: string;
       image_url: string | null;
+    brand: string | null;
+    description: string | null;
+    price: number | null;
+    category_name: string | null;
     };
     suggested?: {
       name: string;
@@ -385,15 +389,24 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
     const existing = await supabase
       .from('products')
-      .select('id, name, slug, image_url')
+              .select('id, name, slug, image_url, brand, description, price, categories(name)')
       .eq('ean', ean)
       .maybeSingle();
 
   if (existing) {
-        return NextResponse.json({
-                ean, found: true, source: 'tenute', existing_product: existing,
+    return NextResponse.json({
+          ean, found: true, source: 'tenute',
+          existing_product: {
+            id: existing.id,
+            name: existing.name,
+            slug: existing.slug,
+            image_url: existing.image_url,
+            brand: (existing as any).brand ?? null,
+            description: (existing as any).description ?? null,
+            price: (existing as any).price ?? null,
+            category_name: (existing as any).categories?.name ?? null,
+          },
         } satisfies BarcodeLookupResult);
-  }
 
   // 2. APIs con key dedicada (en paralelo)
   const [goUpcR, barcodeR, eanR] = await Promise.all([
