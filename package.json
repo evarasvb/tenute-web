@@ -9,6 +9,7 @@
     "lint": "next lint --no-cache",
     "audit:images": "tsx scripts/audit-product-images.ts",
     "fill:images": "tsx scripts/fill-missing-product-images.ts",
+    "fill:images:ci": "tsx scripts/fill-images-ci.ts",
     "test": "jest --passWithNoTests",
     "test:ci": "jest --ci --passWithNoTests"
   },

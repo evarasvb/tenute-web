@@ -80,9 +80,9 @@ jobs:
             if [ -z "$val" ]; then echo "::error::Falta el secret $v"; exit 1; fi
           done
           if [ "${{ inputs.images_dry_run }}" = "true" ]; then
-            npm run fill:images -- --dry-run
+            npm run fill:images:ci -- --dry-run
           else
-            npm run fill:images
+            npm run fill:images:ci
           fi
 
       - name: Subir reporte de fotos
