@@ -1,0 +1,94 @@
+name: Mantenimiento Tenute (migración barcode + rellenar fotos)
+
+# Ejecuta en la infraestructura de GitHub (con internet), las dos tareas que el
+# entorno de Claude Code no puede correr por tener la red restringida:
+#   1) Migración de barcode (arregla el "producto ya existente" del escáner).
+#   2) Rellenar fotos faltantes desde proveedores/tiendas (Dimerc, Prisa, ML…).
+#
+# Se dispara manualmente desde la pestaña "Actions" -> este workflow -> "Run workflow".
+#
+# SECRETS necesarios (Settings -> Secrets and variables -> Actions -> New secret):
+#   Para la migración:
+#     SUPABASE_DB_URL              -> Supabase -> Project Settings -> Database ->
+#                                     "Connection string" -> usar el "Session pooler"
+#                                     (IPv4) en formato URI (postgresql://...).
+#   Para rellenar fotos:
+#     NEXT_PUBLIC_SUPABASE_URL
+#     NEXT_PUBLIC_SUPABASE_ANON_KEY
+#     SUPABASE_SERVICE_ROLE_KEY
+#     PRODUCT_IMAGES_BUCKET        -> opcional (por defecto 'product-images';
+#                                     usa 'products' si quieres el mismo bucket actual).
+#     BING_API_KEY                 -> opcional (mejora la búsqueda de imágenes).
+# Todos esos valores ya existen en tu proyecto de Vercel; cópialos aquí.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_migration:
+        description: 'Ejecutar migración de barcode (requiere SUPABASE_DB_URL)'
+        type: boolean
+        default: true
+      fill_images:
+        description: 'Rellenar fotos faltantes (requiere secrets de Supabase)'
+        type: boolean
+        default: true
+      images_dry_run:
+        description: 'Fotos en modo prueba (no escribe, solo reporta)'
+        type: boolean
+        default: false
+
+jobs:
+  mantenimiento:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Migración barcode (psql)
+        if: ${{ inputs.run_migration }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Falta el secret SUPABASE_DB_URL"; exit 1
+          fi
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase-migration-barcode-fix.sql
+          echo "Migración de barcode aplicada."
+
+      - name: Setup Node
+        if: ${{ inputs.fill_images }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        if: ${{ inputs.fill_images }}
+        run: npm ci
+
+      - name: Rellenar fotos faltantes
+        if: ${{ inputs.fill_images }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PRODUCT_IMAGES_BUCKET: ${{ secrets.PRODUCT_IMAGES_BUCKET }}
+          BING_API_KEY: ${{ secrets.BING_API_KEY }}
+        run: |
+          for v in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            eval "val=\${$v}"
+            if [ -z "$val" ]; then echo "::error::Falta el secret $v"; exit 1; fi
+          done
+          if [ "${{ inputs.images_dry_run }}" = "true" ]; then
+            npm run fill:images -- --dry-run
+          else
+            npm run fill:images
+          fi
+
+      - name: Subir reporte de fotos
+        if: ${{ always() && inputs.fill_images }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-fotos
+          path: tmp/*.json
+          if-no-files-found: ignore
