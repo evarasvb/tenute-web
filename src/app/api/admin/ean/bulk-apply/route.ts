@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { validateEAN13 } from '@/lib/ean';
+import { planEanAssignments, toEan13 } from '@/lib/barcode';
 
 function normaliseBarcode(raw: string): string {
   const digits = String(raw).replace(/\D/g, '');
@@ -82,25 +83,39 @@ export async function POST(request: NextRequest) {
   const applied: Array<{ product_id: string; name: string; ean: string }> = [];
   const skipped: Array<{ product_id: string; name: string; reason: string }> = [];
   const failed: Array<{ product_id: string; error: string }> = [];
+  const nameFor = (pid: string) => existingMap[pid]?.name ?? '';
 
-  for (const productId of productIds) {
-    const ean = deduped[productId];
-    const existing = existingMap[productId];
+  // Productos inexistentes -> fallan de inmediato y no entran al planificador.
+  const assignableIds = productIds.filter((pid) => {
+    if (existingMap[pid]) return true;
+    failed.push({ product_id: pid, error: 'Producto no encontrado' });
+    return false;
+  });
 
-    if (!existing) {
-      failed.push({ product_id: productId, error: 'Producto no encontrado' });
-      continue;
+  // Detectar EANs ya usados por OTRO producto en la base, para no chocar con el
+  // índice único (origen del error "ya está asignado / producto ya existente").
+  const targetEans = [...new Set(assignableIds.map((pid) => deduped[pid]))];
+  const takenByOther = new Map<string, string>();
+  if (targetEans.length > 0) {
+    const { data: owners } = await supabase
+      .from('products')
+      .select('id, barcode')
+      .in('barcode', targetEans);
+    for (const o of (owners ?? []) as Array<{ id: string; barcode: string | null }>) {
+      if (o.barcode) takenByOther.set(toEan13(o.barcode), o.id);
     }
+  }
 
-    // Skip if already has a valid EAN (strict deduplication)
-    if (existing.barcode) {
-      const normExisting = normaliseBarcode(existing.barcode);
-      if (validateEAN13(normExisting)) {
-        skipped.push({ product_id: productId, name: existing.name, reason: `Ya tiene EAN válido: ${normExisting}` });
-        continue;
-      }
-    }
+  const plan = planEanAssignments(
+    assignableIds.map((pid) => ({ product_id: pid, ean: deduped[pid] })),
+    { currentBarcode: (pid) => existingMap[pid]?.barcode ?? null, takenByOther }
+  );
 
+  for (const s of plan.skipped) {
+    skipped.push({ product_id: s.product_id, name: nameFor(s.product_id), reason: s.reason });
+  }
+
+  for (const { product_id: productId, ean } of plan.apply) {
     const { error: updateError } = await supabase
       .from('products')
       .update({ barcode: ean, updated_at: new Date().toISOString() })
@@ -109,7 +124,7 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       failed.push({ product_id: productId, error: updateError.message });
     } else {
-      applied.push({ product_id: productId, name: existing.name, ean });
+      applied.push({ product_id: productId, name: nameFor(productId), ean });
     }
   }
 
