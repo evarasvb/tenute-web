@@ -11,8 +11,7 @@ export interface BarcodeLookupResult {
     found: boolean;
     source: 'tenute' | 'open_food_facts' | 'upcitemdb' | 'open_product_data'
           | 'go_upc' | 'ean_search' | 'barcode_lookup' | 'web_search' | 'chilean_store' | 'not_found';
-    existing_product?: {
-        id: string;
+    existing_product?: {        id: string;
         name: string;
         slug: string;
         image_url: string | null;
@@ -387,7 +386,7 @@ export async function GET(req: NextRequest) {
 
   // 1. Buscar en Tenute primero
   const supabase = createAdminClient();
-    const existing = await supabase
+    const { data: existing } = await supabase
       .from('products')
               .select('id, name, slug, image_url, brand, description, price, categories(name)')
       .eq('ean', ean)
