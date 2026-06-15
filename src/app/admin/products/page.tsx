@@ -100,6 +100,8 @@ export default function AdminProductsPage() {
   const [eanApplyingId, setEanApplyingId] = useState<string | null>(null);
   const [eanApplyingBulk, setEanApplyingBulk] = useState(false);
   const [eanBulkMessage, setEanBulkMessage] = useState('');
+  const [fillingImages, setFillingImages] = useState(false);
+  const [fillMessage, setFillMessage] = useState('');
   const [imageIssues, setImageIssues] = useState<Record<string, ProductImageIssue[]>>({});
   const [imageAuditLoading, setImageAuditLoading] = useState(false);
   const [imageAuditError, setImageAuditError] = useState<string | null>(null);
@@ -369,6 +371,51 @@ export default function AdminProductsPage() {
     if (importFileRef.current) importFileRef.current.value = '';
   }
 
+  // Rellena fotos faltantes buscando en proveedores/tiendas (corre en el
+  // servidor, que sí tiene internet). Procesa por lotes para no exceder el
+  // tiempo máximo de la función serverless.
+  async function handleFillMissingImages() {
+    if (!confirm('Buscar y cargar fotos para los productos SIN imagen? Corre en el servidor y puede tardar varios minutos.')) return;
+    setFillingImages(true);
+    setFillMessage('Buscando productos sin foto...');
+    try {
+      const params = new URLSearchParams({ has_image: 'false', limit: '5000' });
+      const res = await fetch('/api/admin/products?' + params);
+      const data = await res.json();
+      const list = (data.products || data.data || []) as Array<{ id: string | number }>;
+      const ids = list.map((p) => String(p.id));
+      if (ids.length === 0) {
+        setFillMessage('No hay productos sin foto. 🎉');
+        return;
+      }
+      let processed = 0;
+      let filled = 0;
+      const BATCH = 10;
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const chunk = ids.slice(i, i + BATCH);
+        setFillMessage(`Procesando ${processed}/${ids.length}… (fotos cargadas: ${filled})`);
+        try {
+          const r = await fetch('/api/admin/images/fill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productIds: chunk, concurrency: 4 }),
+          });
+          const d = await r.json();
+          filled += Number(d?.summary?.success) || 0;
+        } catch {
+          /* seguir con el siguiente lote */
+        }
+        processed += chunk.length;
+      }
+      setFillMessage(`Listo: ${filled} fotos cargadas de ${ids.length} productos sin foto.`);
+      fetchProducts();
+    } catch (err) {
+      setFillMessage('Error: ' + (err instanceof Error ? err.message : 'desconocido'));
+    } finally {
+      setFillingImages(false);
+    }
+  }
+
   async function loadBulkEanSuggestions() {
     setEanBulkLoading(true);
     setEanBulkMessage('');
@@ -477,6 +524,11 @@ export default function AdminProductsPage() {
           <button onClick={() => { setShowEanBulk(true); loadBulkEanSuggestions(); }} className="inline-flex items-center gap-2 px-4 py-2 border border-indigo-300 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 transition-colors">
             Sugerir EAN masivo
           </button>
+          <button onClick={handleFillMissingImages} disabled={fillingImages} className="inline-flex items-center gap-2 px-4 py-2 border border-amber-400 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-50 disabled:opacity-50 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            {fillingImages ? 'Cargando fotos…' : 'Rellenar fotos'}
+          </button>
+          {fillMessage && <span className="w-full text-xs text-gray-600">{fillMessage}</span>}
           <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-2 px-4 py-2 border border-green-600 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             {exporting ? 'Exportando...' : 'Excel'}
