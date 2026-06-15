@@ -12,14 +12,14 @@ export interface BarcodeLookupResult {
     source: 'tenute' | 'open_food_facts' | 'upcitemdb' | 'open_product_data'
           | 'go_upc' | 'ean_search' | 'barcode_lookup' | 'web_search' | 'chilean_store' | 'not_found';
     existing_product?: {
-      id: string;
-      name: string;
-      slug: string;
-      image_url: string | null;
-    brand: string | null;
-    description: string | null;
-    price: number | null;
-    category_name: string | null;
+        id: string;
+        name: string;
+        slug: string;
+        image_url: string | null;
+        brand: string | null;
+        description: string | null;
+        price: number | null;
+        category_name: string | null;
     };
     suggested?: {
       name: string;
