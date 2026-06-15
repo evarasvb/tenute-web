@@ -407,7 +407,7 @@ export async function GET(req: NextRequest) {
             category_name: (existing as any).categories?.name ?? null,
           },
         } satisfies BarcodeLookupResult);
-
+  }
   // 2. APIs con key dedicada (en paralelo)
   const [goUpcR, barcodeR, eanR] = await Promise.all([
         lookupGoUpc(ean),
