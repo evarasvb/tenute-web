@@ -1,27 +1,19 @@
 name: Mantenimiento Tenute (migración barcode + rellenar fotos)
 
-# Ejecuta en la infraestructura de GitHub (con internet), las dos tareas que el
-# entorno de Claude Code no puede correr por tener la red restringida:
-#   1) Migración de barcode (arregla el "producto ya existente" del escáner).
-#   2) Rellenar fotos faltantes desde proveedores/tiendas (Dimerc, Prisa, ML…).
+# Dos formas de ejecutarlo:
+#   - Manual: Actions -> "Run workflow" (workflow_dispatch).
+#   - Por push a la rama 'run-maintenance' (se usa para dispararlo desde aquí,
+#     ya que la integración no puede hacer "dispatch"). En ese caso corre las
+#     dos tareas en modo real.
 #
-# Se dispara manualmente desde la pestaña "Actions" -> este workflow -> "Run workflow".
-#
-# SECRETS necesarios (Settings -> Secrets and variables -> Actions -> New secret):
-#   Para la migración:
-#     SUPABASE_DB_URL              -> Supabase -> Project Settings -> Database ->
-#                                     "Connection string" -> usar el "Session pooler"
-#                                     (IPv4) en formato URI (postgresql://...).
-#   Para rellenar fotos:
-#     NEXT_PUBLIC_SUPABASE_URL
-#     NEXT_PUBLIC_SUPABASE_ANON_KEY
-#     SUPABASE_SERVICE_ROLE_KEY
-#     PRODUCT_IMAGES_BUCKET        -> opcional (por defecto 'product-images';
-#                                     usa 'products' si quieres el mismo bucket actual).
-#     BING_API_KEY                 -> opcional (mejora la búsqueda de imágenes).
-# Todos esos valores ya existen en tu proyecto de Vercel; cópialos aquí.
+# SECRETS necesarios (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL  (migración; usar el "Session pooler" IPv4, URI postgresql://)
+#   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+#   PRODUCT_IMAGES_BUCKET (opcional, ej. 'products'), BING_API_KEY (opcional)
 
 on:
+  push:
+    branches: [run-maintenance]
   workflow_dispatch:
     inputs:
       run_migration:
@@ -45,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Migración barcode (psql)
-        if: ${{ inputs.run_migration }}
+        if: ${{ github.event_name == 'push' || inputs.run_migration }}
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
@@ -56,18 +48,18 @@ jobs:
           echo "Migración de barcode aplicada."
 
       - name: Setup Node
-        if: ${{ inputs.fill_images }}
+        if: ${{ github.event_name == 'push' || inputs.fill_images }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Instalar dependencias
-        if: ${{ inputs.fill_images }}
+        if: ${{ github.event_name == 'push' || inputs.fill_images }}
         run: npm ci
 
       - name: Rellenar fotos faltantes
-        if: ${{ inputs.fill_images }}
+        if: ${{ github.event_name == 'push' || inputs.fill_images }}
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -86,7 +78,7 @@ jobs:
           fi
 
       - name: Subir reporte de fotos
-        if: ${{ always() && inputs.fill_images }}
+        if: ${{ always() && (github.event_name == 'push' || inputs.fill_images) }}
         uses: actions/upload-artifact@v4
         with:
           name: reporte-fotos
