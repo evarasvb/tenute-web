@@ -2,14 +2,15 @@ name: Mantenimiento Tenute (migración barcode + rellenar fotos)
 
 # Dos formas de ejecutarlo:
 #   - Manual: Actions -> "Run workflow" (workflow_dispatch).
-#   - Por push a la rama 'run-maintenance' (se usa para dispararlo desde aquí,
-#     ya que la integración no puede hacer "dispatch"). En ese caso corre las
-#     dos tareas en modo real.
+#   - Por push a la rama 'run-maintenance' (corre las dos tareas en modo real).
 #
-# SECRETS necesarios (Settings -> Secrets and variables -> Actions):
-#   SUPABASE_DB_URL  (migración; usar el "Session pooler" IPv4, URI postgresql://)
+# SECRETS (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_URL  (migración; "Session pooler" IPv4, URI postgresql://)  [opcional]
 #   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 #   PRODUCT_IMAGES_BUCKET (opcional, ej. 'products'), BING_API_KEY (opcional)
+#
+# La migración y el relleno son INDEPENDIENTES: si falta SUPABASE_DB_URL se
+# omite la migración pero igual se rellenan las fotos.
 
 on:
   push:
@@ -38,28 +39,30 @@ jobs:
 
       - name: Migración barcode (psql)
         if: ${{ github.event_name == 'push' || inputs.run_migration }}
+        continue-on-error: true
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
-            echo "::error::Falta el secret SUPABASE_DB_URL"; exit 1
+            echo "::warning::SUPABASE_DB_URL no configurado; se OMITE la migración de barcode (las fotos sí se rellenan)."
+            exit 0
           fi
           psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -f supabase-migration-barcode-fix.sql
           echo "Migración de barcode aplicada."
 
       - name: Setup Node
-        if: ${{ github.event_name == 'push' || inputs.fill_images }}
+        if: ${{ always() && (github.event_name == 'push' || inputs.fill_images) }}
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Instalar dependencias
-        if: ${{ github.event_name == 'push' || inputs.fill_images }}
+        if: ${{ always() && (github.event_name == 'push' || inputs.fill_images) }}
         run: npm ci
 
       - name: Rellenar fotos faltantes
-        if: ${{ github.event_name == 'push' || inputs.fill_images }}
+        if: ${{ always() && (github.event_name == 'push' || inputs.fill_images) }}
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
