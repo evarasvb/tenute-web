@@ -59,7 +59,7 @@ jobs:
 
       - name: Instalar dependencias
         if: ${{ always() && (github.event_name == 'push' || inputs.fill_images) }}
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Rellenar fotos faltantes
         if: ${{ always() && (github.event_name == 'push' || inputs.fill_images) }}
