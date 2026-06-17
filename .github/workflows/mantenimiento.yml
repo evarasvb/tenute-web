@@ -25,6 +25,10 @@ on:
         description: 'Rellenar fotos faltantes (requiere secrets de Supabase)'
         type: boolean
         default: true
+      fill_eans:
+        description: 'Nutrir EAN/códigos de barra desde proveedores'
+        type: boolean
+        default: true
       images_dry_run:
         description: 'Fotos en modo prueba (no escribe, solo reporta)'
         type: boolean
@@ -78,6 +82,23 @@ jobs:
             npm run fill:images:ci -- --dry-run
           else
             npm run fill:images:ci
+          fi
+
+      - name: Nutrir EAN (códigos de barra)
+        if: ${{ always() && (github.event_name == 'push' || inputs.fill_eans) }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          for v in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            eval "val=\${$v}"
+            if [ -z "$val" ]; then echo "::error::Falta el secret $v"; exit 1; fi
+          done
+          if [ "${{ inputs.images_dry_run }}" = "true" ]; then
+            npm run fill:eans:ci -- --dry-run
+          else
+            npm run fill:eans:ci
           fi
 
       - name: Subir reporte de fotos
