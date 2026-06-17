@@ -10,6 +10,7 @@
     "audit:images": "tsx scripts/audit-product-images.ts",
     "fill:images": "tsx scripts/fill-missing-product-images.ts",
     "fill:images:ci": "tsx scripts/fill-images-ci.ts",
+    "fill:eans:ci": "tsx scripts/fill-eans-ci.ts",
     "test": "jest --passWithNoTests",
     "test:ci": "jest --ci --passWithNoTests"
   },
