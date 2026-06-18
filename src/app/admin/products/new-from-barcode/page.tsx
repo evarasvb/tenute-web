@@ -45,6 +45,21 @@ function slugify(str: string) {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
+// Nombres legibles de cada fuente (en vez de mostrar "web_search" crudo).
+const SOURCE_LABELS: Record<string, string> = {
+  tenute: 'tu cat\u00e1logo',
+  open_food_facts: 'Open Food Facts',
+  open_product_data: 'Open Product Data',
+  upcitemdb: 'UPCitemDB',
+  go_upc: 'Go-UPC',
+  ean_search: 'EAN-Search',
+  barcode_lookup: 'Barcode Lookup',
+  web_search: 'b\u00fasqueda web',
+  chilean_store: 'tienda chilena',
+  not_found: '',
+};
+const sourceLabel = (s?: string) => (s && SOURCE_LABELS[s]) || s?.replace(/_/g, ' ') || '';
+
 async function loadHtml5Qrcode(): Promise<boolean> {
   if (window.Html5Qrcode) return true;
   return new Promise((resolve) => {
@@ -128,35 +143,39 @@ export default function NewFromBarcodePage() {
       }
       const data: LookupResult = await res.json();
       setLookupResult(data);
+
+      // 1) Ya existe en el catálogo de Tenute -> pantalla "ya existe".
       if (data.existing_product) {
-          setSavedProduct({
-            id: data.existing_product.id,
-            name: data.existing_product.name,
-            slug: data.existing_product.slug,
-            image_url: data.existing_product.image_url,
-            ...(data.existing_product as any),
-          });
-          setStep('saved');
-        setName(data.suggested.name || '');
-        setBrand(data.suggested.brand || '');
-        setDescription(data.suggested.description || '');
-        setImageUrl(data.suggested.image_url || '');
-        if (data.suggested.price_ref) setPrice(String(data.suggested.price_ref));
-        setStep('review');
-      } else {
-        setName('');
-        setBrand('');
-        setDescription('');
-        setImageUrl('');
-        setStep('review');
+        setSavedProduct({
+          id: data.existing_product.id,
+          name: data.existing_product.name,
+          slug: data.existing_product.slug,
+          image_url: data.existing_product.image_url,
+          ...(data.existing_product as Record<string, unknown>),
+        } as typeof savedProduct);
+        setStep('saved');
+        return;
       }
+
+      // 2) Producto nuevo: prerellenar con la sugerencia encontrada (si la hay).
+      const s = data.suggested;
+      setName(s?.name?.trim() || '');
+      setBrand(s?.brand?.trim() || '');
+      setDescription(s?.description?.trim() || '');
+      setImageUrl(s?.image_url?.trim() || '');
+      setPrice(s?.price_ref ? String(s.price_ref) : '');
+      // Intentar calzar la categoría sugerida con una existente.
+      const sugCat = s?.category?.trim().toLowerCase();
+      const matchCat = sugCat ? categories.find((c) => c.name.toLowerCase() === sugCat) : undefined;
+      setCategoryId(matchCat ? matchCat.id : '');
+      setStep('review');
     } catch (err: unknown) {
       setLookupError(err instanceof Error ? err.message : 'Error al buscar');
     } finally {
       setLookupLoading(false);
       setScannerStatus('');
     }
-  }, []);
+  }, [categories]);
 
   useEffect(() => {
     return () => { stopCamera(); };
@@ -302,6 +321,13 @@ export default function NewFromBarcodePage() {
   const modeLabel = (m: typeof scannerMode) =>
     ({ camera: 'Camara', manual: 'Manual / USB', photo: 'Foto' })[m];
 
+  // Qué campos se prerellenaron desde la sugerencia (para mostrarlo en el banner).
+  const prefilledFields = [
+    name && 'nombre', brand && 'marca', description && 'descripción',
+    imageUrl && 'imagen', price && 'precio',
+  ].filter(Boolean) as string[];
+  const hasSuggestion = prefilledFields.length > 0;
+
   return (
     <div className="max-w-lg mx-auto space-y-6 pb-16">
       {/* Header */}
@@ -434,17 +460,28 @@ export default function NewFromBarcodePage() {
         <div className="space-y-4">
           {/* Status banner */}
           <div className={`rounded-lg p-3 ${
-            lookupResult.found ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
+            hasSuggestion ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
           }`}>
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{lookupResult.found ? '✅' : '⚠️'}</span>
-              <div>
-                <p className="text-sm font-medium">
-                  {lookupResult.found
-                    ? 'Datos encontrados desde ' + lookupResult.source
-                    : 'Producto no encontrado - completa los datos manualmente'}
-                </p>
-                <p className="text-xs text-gray-500">EAN: {lookupResult.ean}</p>
+            <div className="flex items-start gap-2">
+              <span className="text-lg leading-none mt-0.5">{hasSuggestion ? '✅' : '✍️'}</span>
+              <div className="min-w-0">
+                {hasSuggestion ? (
+                  <>
+                    <p className="text-sm font-medium text-green-900">
+                      Encontramos información — revísala y corrige lo que falte
+                    </p>
+                    <p className="text-xs text-green-700 mt-0.5">
+                      Prerellenado: {prefilledFields.join(', ')}
+                      {lookupResult.source && lookupResult.source !== 'not_found'
+                        ? ` · vía ${sourceLabel(lookupResult.source)}` : ''}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm font-medium text-yellow-900">
+                    No encontramos datos para este código. Complétalos a mano.
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 mt-1 font-mono">EAN {lookupResult.ean}</p>
               </div>
             </div>
           </div>
