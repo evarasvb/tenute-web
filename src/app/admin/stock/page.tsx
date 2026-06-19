@@ -56,16 +56,21 @@ export default function StockPage() {
   const valueLocal = products.reduce((s, p) => s + (p.cost_price || 0) * (p.stock_local21 || 0), 0);
 
   // Filter products
+  const q = search.toLowerCase().trim();
   const filtered = products.filter(p => {
-    const matchSearch = !search ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.sku || '').toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !q ||
+      p.name.toLowerCase().includes(q) ||
+      (p.sku || '').toLowerCase().includes(q) ||
+      (p.barcode || '').toLowerCase().includes(q);
     const matchWarehouse =
       warehouseFilter === 'all' ||
       (warehouseFilter === 'ocoa' && (p.stock_ocoa || 0) > 0) ||
       (warehouseFilter === 'local' && (p.stock_local21 || 0) > 0);
     return matchSearch && matchWarehouse;
   });
+
+  // Cobertura de códigos de barra (EAN) — para saber qué falta para inventariar.
+  const withBarcode = products.filter(p => (p.barcode || '').trim().length > 0).length;
 
   const startEdit = (p: Product) => {
     setEditingId(p.id);
@@ -151,7 +156,9 @@ export default function StockPage() {
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <input
           type="text"
-          placeholder="Buscar por nombre o SKU..."
+          inputMode="search"
+          autoFocus
+          placeholder="Buscar o escanear: nombre, SKU o código de barra…"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -166,6 +173,15 @@ export default function StockPage() {
           <option value="local">Solo Local 21</option>
         </select>
         <span className="self-center text-sm text-gray-500 whitespace-nowrap">{filtered.length} productos</span>
+      </div>
+
+      {/* Cobertura de códigos de barra para inventario */}
+      <div className="mb-4 text-xs text-gray-500">
+        Con código de barra: <strong className="text-gray-700">{withBarcode.toLocaleString('es-CL')}</strong>
+        {' '}de{' '}<strong className="text-gray-700">{products.length.toLocaleString('es-CL')}</strong>
+        {products.length > 0 && (
+          <span> ({Math.round((withBarcode / products.length) * 100)}%) · {(products.length - withBarcode).toLocaleString('es-CL')} sin código</span>
+        )}
       </div>
 
       {/* Table */}
