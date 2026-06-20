@@ -198,12 +198,12 @@ export default function OrderDetailClient({ orderNumber }: { orderNumber: string
       <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800 text-center">
         Para consultas sobre tu pedido, contáctanos por WhatsApp al{' '}
         <a
-          href="https://wa.me/56987299147"
+          href="https://wa.me/56994259157"
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium underline"
         >
-          +569 8729 9147
+          +569 9425 9157
         </a>
       </div>
 
