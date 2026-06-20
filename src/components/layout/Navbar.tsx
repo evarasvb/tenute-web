@@ -29,7 +29,7 @@ export default function Navbar() {
           <Link href="/#categorias" className="hover:text-blue-600 transition-colors">Categorías</Link>
           <Link href="/#mayorista" className="hover:text-blue-600 transition-colors">Mayorista</Link>
           <Link href="/rifas" className="hover:text-blue-600 transition-colors">Rifas</Link>
-          <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">Contacto</a>
+          <a href="https://wa.me/56994259157" target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">Contacto</a>
         </nav>
 
         {/* CTA + Cart */}
@@ -84,7 +84,7 @@ export default function Navbar() {
             <Link href="/#categorias" onClick={() => setOpen(false)}>Categorías</Link>
             <Link href="/#mayorista" onClick={() => setOpen(false)}>Mayorista</Link>
             <Link href="/rifas" onClick={() => setOpen(false)}>Rifas</Link>
-            <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Contacto</a>
+            <a href="https://wa.me/56994259157" target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>Contacto</a>
             <Link href="/catalogo" className="btn-primary mt-2 w-full text-center" onClick={() => setOpen(false)}>Ver catálogo</Link>
           </nav>
         </div>

@@ -31,12 +31,12 @@ export default function Footer() {
           <ul className="flex flex-col gap-2 text-sm">
             <li>
               <a
-                href="https://wa.me/56987299147"
+                href="https://wa.me/56994259157"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-white transition-colors inline-flex items-center gap-1"
               >
-                📱 +569 87299147 (WhatsApp)
+                📱 +569 94259157 (WhatsApp)
               </a>
             </li>
             <li>📍 Feria Agro Tahsa, Local 21, Segunda Calle, Hijuelas, V Región</li>
