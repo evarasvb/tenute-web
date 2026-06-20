@@ -78,7 +78,7 @@ export default function RifasPage() {
                   <a href="https://www.instagram.com" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm font-semibold">
                     Promocionar en Instagram
                   </a>
-                  <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold">
+                  <a href="https://wa.me/56994259157" target="_blank" rel="noopener noreferrer" className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold">
                     Compartir por WhatsApp
                   </a>
                 </div>
