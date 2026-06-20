@@ -1,4 +1,3 @@
-import { load } from 'cheerio';
 import { fetchJsonWithTimeout, fetchTextWithTimeout, normalizeImageUrl } from '@/lib/product-images/http';
 import { parseMercadoLibreCandidates } from '@/lib/product-images/mercadolibre';
 import type { ImageCandidate } from '@/lib/product-images/types';
@@ -26,7 +25,8 @@ async function fetchBingCandidate(query: string): Promise<ImageCandidate[]> {
   return candidates;
 }
 
-function extractListingImage(html: string, source: 'falabella' | 'sodimac'): ImageCandidate[] {
+async function extractListingImage(html: string, source: 'falabella' | 'sodimac'): Promise<ImageCandidate[]> {
+  const { load } = await import('cheerio');
   const $ = load(html);
   const candidateUrl =
     $('img[data-src]').first().attr('data-src') ||
@@ -45,7 +45,7 @@ async function scrapeListingImage(query: string, source: 'falabella' | 'sodimac'
       ? `https://www.falabella.com/falabella-cl/search?Ntt=${encoded}`
       : `https://www.sodimac.cl/sodimac-cl/search?Ntt=${encoded}`;
   const html = await fetchTextWithTimeout(url, { headers: { 'User-Agent': USER_AGENT } });
-  return extractListingImage(html, source);
+  return await extractListingImage(html, source);
 }
 
 /**
