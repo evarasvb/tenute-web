@@ -82,14 +82,14 @@ export async function POST(request: Request) {
       if (order.tracking_number) {
         message += `\n📦 Número de seguimiento: ${order.tracking_number}`;
       }
-      message += `\n\nPara consultas: wa.me/56987299147`;
+      message += `\n\nPara consultas: wa.me/56994259157`;
     } else {
       message = buildOrderWhatsAppMessage(order);
     }
 
     const notificationEmail = process.env.TENUTE_NOTIFICATION_EMAIL || 'tenute@gmail.com';
     const billingEmail = process.env.TENUTE_BILLING_EMAIL || 'tenute@gmail.com';
-    const whatsappUrl = `https://wa.me/56987299147?text=${encodeURIComponent(message)}`;
+    const whatsappUrl = `https://wa.me/56994259157?text=${encodeURIComponent(message)}`;
 
     return NextResponse.json({
       message,
