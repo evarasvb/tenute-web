@@ -26,8 +26,8 @@ export default function PoliciesPage() {
                 <span className="text-blue-600 mt-0.5 flex-shrink-0">•</span>
                 <span>
                   Para solicitar un cambio, contactar por WhatsApp al{' '}
-                  <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
-                    +569 87299147
+                  <a href="https://wa.me/56994259157" target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
+                    +569 94259157
                   </a>{' '}
                   con: número de pedido, fotos del producto, motivo del cambio.
                 </span>
@@ -63,8 +63,8 @@ export default function PoliciesPage() {
                 <span className="text-orange-500 mt-0.5 flex-shrink-0">•</span>
                 <span>
                   Si hay discrepancia entre lo publicado y lo recibido, el comprador tiene <strong>3 días corridos</strong> para reportar por WhatsApp al{' '}
-                  <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
-                    +569 87299147
+                  <a href="https://wa.me/56994259157" target="_blank" rel="noopener noreferrer" className="text-green-600 font-medium hover:underline">
+                    +569 94259157
                   </a>{' '}
                   con fotos.
                 </span>
@@ -111,7 +111,7 @@ export default function PoliciesPage() {
           <div className="text-center mt-8">
             <p className="text-gray-500 text-sm mb-3">¿Tienes dudas sobre tu pedido?</p>
             <a
-              href="https://wa.me/56987299147"
+              href="https://wa.me/56994259157"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-6 py-3 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600 transition-colors"
