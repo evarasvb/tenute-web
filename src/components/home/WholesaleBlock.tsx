@@ -16,7 +16,7 @@ export default function WholesaleBlock() {
         </p>
         <div className="flex flex-wrap justify-center gap-3">
           <a
-            href="https://wa.me/56987299147?text=Hola%2C%20quiero%20consultar%20precios%20mayoristas%20Tenute"
+            href="https://wa.me/56994259157?text=Hola%2C%20quiero%20consultar%20precios%20mayoristas%20Tenute"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-8 py-3 bg-white text-blue-700 font-bold rounded-lg hover:bg-blue-50 transition-colors"
