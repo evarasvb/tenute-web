@@ -89,40 +89,51 @@ async function fetchVtexCandidate(
   }
 }
 
+async function safeCandidates(
+  fn: () => Promise<ImageCandidate[]>
+): Promise<ImageCandidate[]> {
+  try {
+    return await fn();
+  } catch {
+    // Una fuente caída (p. ej. HTTP 403) no debe abortar el resto.
+    return [];
+  }
+}
+
 export async function searchImageCandidates(productName: string): Promise<ImageCandidate[]> {
   const query = sanitizeQuery(productName);
   if (!query) return [];
 
-  const mercadoLibrePayload = await fetchJsonWithTimeout<unknown>(
-    `https://api.mercadolibre.com/sites/MLC/search?q=${encodeURIComponent(query)}&limit=3`
-  );
-  const mercadolibreCandidates = parseMercadoLibreCandidates(mercadoLibrePayload);
+  // Cada fuente se intenta de forma aislada; si una falla, se pasa a la siguiente.
+  const mercadolibreCandidates = await safeCandidates(async () => {
+    const payload = await fetchJsonWithTimeout<unknown>(
+      `https://api.mercadolibre.com/sites/MLC/search?q=${encodeURIComponent(query)}&limit=3`
+    );
+    return parseMercadoLibreCandidates(payload);
+  });
   if (mercadolibreCandidates.length > 0) return mercadolibreCandidates;
 
-  const bingCandidates = await fetchBingCandidate(query);
+  const bingCandidates = await safeCandidates(() => fetchBingCandidate(query));
   if (bingCandidates.length > 0) return bingCandidates;
 
   // Proveedores propios (catálogo VTEX). Dimerc es de donde se sacan productos;
   // Prisa se intenta con el mismo patrón (si no es VTEX, devuelve []).
-  const dimercCandidates = await fetchVtexCandidate('www.dimerc.cl', query, 'dimerc');
+  const dimercCandidates = await safeCandidates(() =>
+    fetchVtexCandidate('www.dimerc.cl', query, 'dimerc')
+  );
   if (dimercCandidates.length > 0) return dimercCandidates;
 
-  const prisaCandidates = await fetchVtexCandidate('www.prisa.cl', query, 'prisa');
+  const prisaCandidates = await safeCandidates(() =>
+    fetchVtexCandidate('www.prisa.cl', query, 'prisa')
+  );
   if (prisaCandidates.length > 0) return prisaCandidates;
 
-  let falabellaCandidates: ImageCandidate[] = [];
-  try {
-    falabellaCandidates = await scrapeListingImage(query, 'falabella');
-  } catch {
-    falabellaCandidates = [];
-  }
+  const falabellaCandidates = await safeCandidates(() =>
+    scrapeListingImage(query, 'falabella')
+  );
   if (falabellaCandidates.length > 0) return falabellaCandidates;
 
-  try {
-    return await scrapeListingImage(query, 'sodimac');
-  } catch {
-    return [];
-  }
+  return await safeCandidates(() => scrapeListingImage(query, 'sodimac'));
 }
 
 export async function findBestImageCandidate(productName: string): Promise<{
