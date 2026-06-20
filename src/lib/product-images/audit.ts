@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import pLimit from 'p-limit';
+import { pLimit } from './limit';
 import {
   DEFAULT_AUDIT_CONCURRENCY,
   DEFAULT_TIMEOUT_MS,

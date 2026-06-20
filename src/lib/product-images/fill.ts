@@ -1,4 +1,4 @@
-import pLimit from 'p-limit';
+import { pLimit } from './limit';
 import { createAdminClient } from '@/lib/supabase';
 import { DEFAULT_FILL_CONCURRENCY, MIN_IMAGE_SIDE } from './config';
 import { fetchImageMetadata } from './http';
