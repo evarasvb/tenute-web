@@ -119,7 +119,7 @@ export default function CheckoutClient() {
     } else {
       const phoneResult = validateChileanPhone(customer.phone);
       if (!phoneResult.valid) {
-        errors.phone = 'Ingresa un número de celular válido (ej: +569 8729 9147)';
+        errors.phone = 'Ingresa un número de celular válido (ej: +569 9425 9157)';
       }
     }
 
@@ -317,7 +317,7 @@ export default function CheckoutClient() {
 
       if (paymentMethod === 'whatsapp') {
         window.open(
-          `https://wa.me/56987299147?text=${encodeURIComponent(whatsappMsg)}`,
+          `https://wa.me/56994259157?text=${encodeURIComponent(whatsappMsg)}`,
           '_blank'
         );
       }
@@ -490,7 +490,7 @@ export default function CheckoutClient() {
               setCustomer((c) => ({ ...c, phone: formatted }));
               setFieldErrors((fe) => ({ ...fe, phone: '' }));
             }}
-            placeholder="+569 8729 9147"
+            placeholder="+569 9425 9157"
             className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white ${
               fieldErrors.phone ? 'border-red-400' : 'border-gray-300'
             }`}
@@ -1103,19 +1103,19 @@ export default function CheckoutClient() {
             <p><strong>RUT:</strong> 13.468.914-5</p>
             <p><strong>Banco:</strong> Cuenta RUT Banco Estado</p>
             <p><strong>Email:</strong> tenute@gmail.com</p>
-            <p><strong>Teléfono:</strong> +569 87299147</p>
+            <p><strong>Teléfono:</strong> +569 94259157</p>
           </div>
         </div>
 
         <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
           Para consultas sobre tu pedido, contáctanos por WhatsApp al{' '}
           <a
-            href="https://wa.me/56987299147"
+            href="https://wa.me/56994259157"
             target="_blank"
             rel="noopener noreferrer"
             className="font-medium underline"
           >
-            +569 8729 9147
+            +569 9425 9157
           </a>
         </div>
 
