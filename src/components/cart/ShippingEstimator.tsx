@@ -31,7 +31,7 @@ export default function ShippingEstimator() {
             Envíos a todo Chile vía <strong>Starken</strong>. Para cotizar tu envío a <strong>{commune}</strong>, contáctanos por WhatsApp:
           </p>
           <a
-            href={`https://wa.me/56987299147?text=${encodeURIComponent(`Hola, quiero cotizar el envío a ${commune}`)}`}
+            href={`https://wa.me/56994259157?text=${encodeURIComponent(`Hola, quiero cotizar el envío a ${commune}`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-green-600 hover:text-green-700"

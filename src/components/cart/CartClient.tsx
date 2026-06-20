@@ -115,7 +115,7 @@ export default function CartClient() {
           </Link>
 
           <a
-            href={`https://wa.me/56987299147?text=${buildWhatsAppMessage()}`}
+            href={`https://wa.me/56994259157?text=${buildWhatsAppMessage()}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg border-2 border-green-500 text-green-600 font-semibold text-sm hover:bg-green-50 transition-colors"
