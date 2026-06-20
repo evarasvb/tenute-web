@@ -104,9 +104,16 @@ export default function StockPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Stock por Bodega</h1>
-        <p className="text-gray-500 text-sm mt-1">Vista general del inventario en cada bodega</p>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Stock por Bodega</h1>
+          <p className="text-gray-500 text-sm mt-1">Vista general del inventario en cada bodega</p>
+        </div>
+        <Link href="/admin/stock/contar"
+          className="shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 7V5a1 1 0 011-1h2M4 17v2a1 1 0 001 1h2m10-16h2a1 1 0 011 1v2m-3 14h2a1 1 0 001-1v-2M7 8h.01M7 12h.01M11 8h2v8h-2z" /></svg>
+          Inventario por escaneo
+        </Link>
       </div>
 
       {errorMsg && (
