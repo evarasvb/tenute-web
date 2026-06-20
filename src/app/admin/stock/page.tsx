@@ -82,6 +82,7 @@ export default function StockPage() {
 
   const saveStock = async (productId: string) => {
     setSaving(true);
+    const prod = products.find(p => p.id === productId);
     try {
       const resp = await fetch(`/api/admin/products/${productId}`, {
         method: 'PATCH',
@@ -89,6 +90,17 @@ export default function StockPage() {
         body: JSON.stringify({ stock_ocoa: editOcoa, stock_local21: editLocal, stock: editOcoa + editLocal }),
       });
       if (!resp.ok) throw new Error('Error guardando');
+      // Historial (best-effort).
+      const movements = [
+        editOcoa !== (prod?.stock_ocoa || 0) && { product_id: productId, warehouse: 'ocoa', delta: editOcoa - (prod?.stock_ocoa || 0), stock_after: editOcoa, reason: 'edicion' },
+        editLocal !== (prod?.stock_local21 || 0) && { product_id: productId, warehouse: 'local21', delta: editLocal - (prod?.stock_local21 || 0), stock_after: editLocal, reason: 'edicion' },
+      ].filter(Boolean);
+      if (movements.length > 0) {
+        fetch('/api/admin/stock/movements', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movements }),
+        }).catch(() => {});
+      }
       setProducts(prev => prev.map(p =>
         p.id === productId
           ? { ...p, stock_ocoa: editOcoa, stock_local21: editLocal, stock: editOcoa + editLocal }
@@ -109,11 +121,18 @@ export default function StockPage() {
           <h1 className="text-2xl font-bold text-gray-900">Stock por Bodega</h1>
           <p className="text-gray-500 text-sm mt-1">Vista general del inventario en cada bodega</p>
         </div>
-        <Link href="/admin/stock/contar"
-          className="shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 7V5a1 1 0 011-1h2M4 17v2a1 1 0 001 1h2m10-16h2a1 1 0 011 1v2m-3 14h2a1 1 0 001-1v-2M7 8h.01M7 12h.01M11 8h2v8h-2z" /></svg>
-          Inventario por escaneo
-        </Link>
+        <div className="shrink-0 flex items-center gap-2">
+          <Link href="/admin/stock/historial"
+            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            Historial
+          </Link>
+          <Link href="/admin/stock/contar"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 7V5a1 1 0 011-1h2M4 17v2a1 1 0 001 1h2m10-16h2a1 1 0 011 1v2m-3 14h2a1 1 0 001-1v-2M7 8h.01M7 12h.01M11 8h2v8h-2z" /></svg>
+            Inventario por escaneo
+          </Link>
+        </div>
       </div>
 
       {errorMsg && (
