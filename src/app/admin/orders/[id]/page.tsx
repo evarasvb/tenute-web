@@ -150,7 +150,7 @@ export default function AdminOrderDetailPage({
     const updated = await updateOrder({ status: 'delivered' });
     if (updated) {
       openWhatsApp(
-        `Hola ${order!.customer_name}! Tu pedido ${order!.order_number} ha sido entregado. Esperamos que disfrutes tu compra. Si necesitas algo, escríbenos al +569 87299147. Gracias por comprar en Tenute!`
+        `Hola ${order!.customer_name}! Tu pedido ${order!.order_number} ha sido entregado. Esperamos que disfrutes tu compra. Si necesitas algo, escríbenos al +569 94259157. Gracias por comprar en Tenute!`
       );
     }
   }
@@ -238,7 +238,7 @@ export default function AdminOrderDetailPage({
           <div class="brand">TENUTE</div>
           <div class="sender">Feria Agro Tahsa, Local 21</div>
           <div class="sender">Hijuelas, V Región</div>
-          <div class="sender">+569 87299147</div>
+          <div class="sender">+569 94259157</div>
         </div>
         <div class="header-right">
           <div class="order-num">PEDIDO ${order.order_number}</div>
