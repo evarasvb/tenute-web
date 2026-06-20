@@ -195,7 +195,7 @@ export default function RaffleDetailPage() {
 
                   <div className="mt-5 flex items-center gap-3 text-xs">
                     <a href="https://www.instagram.com" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Instagram</a>
-                    <a href="https://wa.me/56987299147" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-full bg-green-100 text-green-700 font-semibold">WhatsApp</a>
+                    <a href="https://wa.me/56994259157" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded-full bg-green-100 text-green-700 font-semibold">WhatsApp</a>
                     <span className="text-gray-500">{raffle.social_hashtag || '#rifaTenute'}</span>
                   </div>
                 </div>
