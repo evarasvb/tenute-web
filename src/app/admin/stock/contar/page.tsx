@@ -150,17 +150,31 @@ export default function InventarioScanPage() {
     setSaving(true);
     setSaveResult('');
     let ok = 0, fail = 0;
+    const movements: Array<{ product_id: string; warehouse: Warehouse; delta: number; stock_after: number; reason: string }> = [];
     for (const r of rows) {
       const ocoa = warehouse === 'ocoa' ? r.count : r.product.stock_ocoa || 0;
       const local21 = warehouse === 'local21' ? r.count : r.product.stock_local21 || 0;
+      const actual = warehouse === 'ocoa' ? (r.product.stock_ocoa || 0) : (r.product.stock_local21 || 0);
       try {
         const res = await fetch(`/api/admin/products/${r.product.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ stock_ocoa: ocoa, stock_local21: local21, stock: ocoa + local21 }),
         });
-        if (res.ok) ok++; else fail++;
+        if (res.ok) {
+          ok++;
+          movements.push({ product_id: r.product.id, warehouse, delta: r.count - actual, stock_after: r.count, reason: 'inventario' });
+        } else fail++;
       } catch { fail++; }
+    }
+    // Registrar el historial (best-effort: si la tabla no existe, no pasa nada).
+    if (movements.length > 0) {
+      try {
+        await fetch('/api/admin/stock/movements', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movements }),
+        });
+      } catch { /* no fatal */ }
     }
     setSaving(false);
     setSaveResult(`Inventario guardado en ${WAREHOUSE_LABEL[warehouse]}: ${ok} productos actualizados${fail ? `, ${fail} con error` : ''}.`);
