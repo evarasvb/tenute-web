@@ -1,4 +1,5 @@
 import Hero from '@/components/home/Hero';
+import FeriaBanner from '@/components/home/FeriaBanner';
 import FeaturedProducts from '@/components/home/FeaturedProducts';
 import Categories from '@/components/home/Categories';
 import WholesaleBlock from '@/components/home/WholesaleBlock';
@@ -11,6 +12,7 @@ export default function HomePage() {
       <Navbar />
       <main>
         <Hero />
+        <FeriaBanner />
         <Categories />
         <FeaturedProducts />
         <WholesaleBlock />
