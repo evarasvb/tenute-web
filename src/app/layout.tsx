@@ -8,9 +8,13 @@ import FloatingCartButton from '@/components/cart/FloatingCartButton';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Tenute — Artículos de oficina e insumos',
+  metadataBase: new URL('https://www.tenute.cl'),
+  title: {
+    default: 'Tenute — Artículos de oficina, insumos desechables y más',
+    template: '%s | Tenute',
+  },
   description:
-    'Tenute ofrece artículos de oficina, insumos desechables y más. Compra al por menor o al por mayor.',
+    'Tenute ofrece artículos de oficina, insumos desechables, mobiliario y más. Venta al por menor y mayorista, despacho a todo Chile.',
   openGraph: {
     title: 'Tenute',
     description: 'Artículos de oficina, insumos desechables y varios.',
