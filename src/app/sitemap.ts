@@ -13,11 +13,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   // Solo productos activos CON stock real (stock = stock_ocoa + stock_local21,
-  // sincronizado por trigger). Esto evita listar el catálogo no vendible en el
-  // sitemap, que es la causa raíz de la baja indexación en Google.
+  // sincronizado por trigger). Esto evita listar el catalogo no vendible en el
+  // sitemap, que es la causa raiz de la baja indexacion en Google.
   const { data: products } = await supabase
     .from('products')
-    .select('slug, created_at')
+    .select('slug, updated_at, created_at')
     .eq('active', true)
     .gt('stock', 0);
 
@@ -28,17 +28,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const productRoutes: MetadataRoute.Sitemap = (products ?? [])
     .filter((p) => p.slug)
     .map((p) => ({
-      url: `${BASE_URL}/producto/${p.slug}`,
-      lastModified: p.created_at ? new Date(p.created_at) : new Date(),
+      url: `${BASE_URL}/producto/${p.slug.toLowerCase()}`,
+      lastModified: p.updated_at ? new Date(p.updated_at) : p.created_at ? new Date(p.created_at) : new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.7,
+    }));
+
+  const categoryRoutes: MetadataRoute.Sitemap = (categories ?? [])
+    .filter((c) => c.slug)
+    .map((c) => ({
+      url: `${BASE_URL}/catalogo?categoria=${c.slug.toLowerCase()}`,
       changeFrequency: 'weekly',
       priority: 0.8,
     }));
 
-  const categoryRoutes: MetadataRoute.Sitemap = (categories ?? []).map((c) => ({
-    url: `${BASE_URL}/catalogo?categoria=${c.slug}`,
-    changeFrequency: 'weekly',
-    priority: 0.6,
-  }));
-
-  return [...staticRoutes, ...productRoutes, ...categoryRoutes];
+  return [...staticRoutes, ...categoryRoutes, ...productRoutes];
 }
