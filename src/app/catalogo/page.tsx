@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import Navbar from '@components/layout/Navbar';
-import Footer from '@components/layout/Footer';
-import CatalogClient from '@components/catalog/CatalogClient';
+import Navbar from '@/components/layout/Navbar';
+import Footer from '@/components/layout/Footer';
+import CatalogClient from '@/components/catalog/CatalogClient';
 
 const BASE_URL = 'https://www.tenute.cl';
 
