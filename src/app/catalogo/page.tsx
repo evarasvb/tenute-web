@@ -1,37 +1,70 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
-import CatalogClient from '@/components/catalog/CatalogClient';
+import Navbar from '@components/layout/Navbar';
+import Footer from '@components/layout/Footer';
+import CatalogClient from '@components/catalog/CatalogClient';
 
 const BASE_URL = 'https://www.tenute.cl';
 
-export const metadata: Metadata = {
-  title: 'Catálogo de productos | Tenute Chile',
-  description:
-    'Explora todo el catálogo de Tenute: artículos de oficina, insumos desechables, mobiliario, tecnología y más. Despacho a todo Chile.',
-  alternates: {
-    canonical: `${BASE_URL}/catalogo`,
-  },
-  openGraph: {
-    title: 'Catálogo completo | Tenute Chile',
-    description:
-      'Todos los productos Tenute en un solo lugar. Artículos de oficina, insumos desechables, mobiliario y varios.',
-    url: `${BASE_URL}/catalogo`,
-    siteName: 'Tenute',
-    locale: 'es_CL',
-    type: 'website',
-    images: [
-      {
-        url: `${BASE_URL}/og-default.jpg`,
-        width: 1200,
-        height: 630,
-        alt: 'Catálogo Tenute',
-      },
-    ],
-  },
+type Props = {
+  searchParams: Promise<{ categoria?: string }>;
 };
+
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const { categoria } = await searchParams;
+
+  if (categoria) {
+    // Fetch category details for per-category metadata
+    const { data: cat } = await supabase
+      .from('categories')
+      .select('name, seo_title, seo_description')
+      .eq('slug', categoria.toLowerCase())
+      .single();
+
+    const catName = cat?.name ?? categoria.replace(/-/g, ' ');
+    const title = cat?.seo_title ?? `${catName} | Tenute Chile`;
+    const description =
+      cat?.seo_description ??
+      `Compra ${catName} en Tenute. Precios mayoristas y al detalle. Despacho a todo Chile.`;
+    const canonicalUrl = `${BASE_URL}/catalogo?categoria=${categoria.toLowerCase()}`;
+
+    return {
+      title,
+      description,
+      alternates: { canonical: canonicalUrl },
+      openGraph: {
+        title,
+        description,
+        url: canonicalUrl,
+        siteName: 'Tenute',
+        locale: 'es_CL',
+        type: 'website',
+        images: [{ url: `${BASE_URL}/og-default.jpg`, width: 1200, height: 630, alt: catName }],
+      },
+    };
+  }
+
+  // Default catalog metadata (no category filter)
+  return {
+    title: 'Catálogo de productos | Tenute Chile',
+    description:
+      'Explora todo el catálogo de Tenute: artículos de oficina, insumos desechables, mobiliario, tecnología y más. Despacho a todo Chile.',
+    alternates: { canonical: `${BASE_URL}/catalogo` },
+    openGraph: {
+      title: 'Catálogo completo | Tenute Chile',
+      description:
+        'Todos los productos Tenute en un solo lugar. Artículos de oficina, insumos desechables, mobiliario y varios.',
+      url: `${BASE_URL}/catalogo`,
+      siteName: 'Tenute',
+      locale: 'es_CL',
+      type: 'website',
+      images: [
+        { url: `${BASE_URL}/og-default.jpg`, width: 1200, height: 630, alt: 'Catálogo Tenute' },
+      ],
+    },
+  };
+}
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -52,11 +85,12 @@ async function getCategories() {
     .from('categories')
     .select('id, name, slug')
     .order('name');
-  return data || [];
+  return data ?? [];
 }
 
-export default async function CatalogoPage() {
+export default async function CatalogoPage({ searchParams }: Props) {
   const categories = await getCategories();
+  const { categoria } = await searchParams;
 
   return (
     <>
@@ -65,15 +99,9 @@ export default async function CatalogoPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <Navbar />
-      <main className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Catálogo</h1>
-          <p className="text-gray-500 mb-6">Explora todos nuestros productos.</p>
-          <Suspense fallback={<div className="text-center py-12 text-gray-400">Cargando productos...</div>}>
-            <CatalogClient categories={categories} />
-          </Suspense>
-        </div>
-      </main>
+      <Suspense fallback={<div className="p-8 text-center">Cargando catálogo...</div>}>
+        <CatalogClient categories={categories} initialCategoria={categoria} />
+      </Suspense>
       <Footer />
     </>
   );
