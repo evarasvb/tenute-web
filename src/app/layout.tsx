@@ -21,6 +21,10 @@ export const metadata: Metadata = {
     locale: 'es_CL',
     type: 'website',
   },
+      other: {
+      'google-site-verification': 'jc7KIfL9J-fpJ9VJmR7G1G59g2UxZHNxFBgG2AFlf7k',
+    },
+
 };
 
 export default function RootLayout({
