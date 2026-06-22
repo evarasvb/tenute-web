@@ -100,7 +100,7 @@ export default async function CatalogoPage({ searchParams }: Props) {
       />
       <Navbar />
       <Suspense fallback={<div className="p-8 text-center">Cargando catálogo...</div>}>
-        <CatalogClient categories={categories} initialCategoria={categoria} />
+        <CatalogClient categories={categories />
       </Suspense>
       <Footer />
     </>
