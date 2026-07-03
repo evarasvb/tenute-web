@@ -10,15 +10,16 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.tenute.cl'),
   title: {
-    default: 'Tenute — Artículos de oficina, insumos desechables y más',
+    default: 'Tenute | Artículos de Oficina, Insumos Desechables | Mayorista Chile',
     template: '%s | Tenute',
   },
   description:
-    'Tenute ofrece artículos de oficina, insumos desechables, mobiliario y más. Venta al por menor y mayorista, despacho a todo Chile.',
+'Compra artículos de oficina, insumos desechables y mobiliario baratos. Mayorista y retail. 666+ productos. Envío a todo Chile desde Hijuelas.',
   openGraph: {
     title: 'Tenute',
     description: 'Artículos de oficina, insumos desechables y varios.',
     locale: 'es_CL',
+        keywords: 'artículos de oficina, insumos desechables, mobiliario, mayorista, compra online',
     type: 'website',
   },
       other: {
