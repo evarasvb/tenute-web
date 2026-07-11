@@ -81,8 +81,11 @@ export default function CheckoutClient() {
   useEffect(() => {
     supabase
       .from('shipping_zones')
+      // Incluye zonas activas y las que nunca fueron marcadas (is_active null),
+      // para que el despacho nacional no desaparezca si la migración insertó
+      // filas sin setear is_active. Solo se ocultan las desactivadas a propósito.
+      .or('is_active.is.null,is_active.eq.true')
       .select('*')
-      .eq('is_active', true)
       .order('delivery_cost', { ascending: true })
       .then(({ data }) => {
         if (data) {
