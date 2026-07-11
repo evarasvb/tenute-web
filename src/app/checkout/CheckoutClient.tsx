@@ -58,7 +58,7 @@ export default function CheckoutClient() {
     shipping_method: string;
   } | null>(null);
   const [flowEnabled, setFlowEnabled] = useState(false);
-  const [flowLoading, setFlowLoading] = useState(false);
+  const [flowLoading, setFlowLoading] = useState(false);   const [mounted, setMounted] = useState(false);
 
   const [customer, setCustomer] = useState<CustomerInfo>({
     name: '',
@@ -81,8 +81,11 @@ export default function CheckoutClient() {
   useEffect(() => {
     supabase
       .from('shipping_zones')
+      // Incluye zonas activas y las que nunca fueron marcadas (is_active null),
+      // para que el despacho nacional no desaparezca si la migración insertó
+      // filas sin setear is_active. Solo se ocultan las desactivadas a propósito.
+      .or('is_active.is.null,is_active.eq.true')
       .select('*')
-      .eq('is_active', true)
       .order('delivery_cost', { ascending: true })
       .then(({ data }) => {
         if (data) {
@@ -92,9 +95,11 @@ export default function CheckoutClient() {
       });
   }, []);
 
+    useEffect(() => { setMounted(true); }, []);
+
   // Check if Flow.cl is enabled
   useEffect(() => {
-    fetch('/api/flow/status')
+        fetch('/api/flow/status')
       .then(r => r.json())
       .then(data => setFlowEnabled(data.enabled))
       .catch(() => {});
@@ -102,10 +107,10 @@ export default function CheckoutClient() {
 
   // Redirect to cart if empty (except on confirmation step)
   useEffect(() => {
-    if (items.length === 0 && step < 3 && !orderResult) {
+    if (mounted && items.length === 0 && step < 3 && !orderResult) {
       router.push('/carro');
     }
-  }, [items, step, orderResult, router]);
+  }, [items, step, orderResult, router, mounted]);
 
   function validateStep0(): boolean {
     const errors: Record<string, string> = {};
