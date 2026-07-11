@@ -95,9 +95,11 @@ export default function CheckoutClient() {
       });
   }, []);
 
+    useEffect(() => { setMounted(true); }, []);
+
   // Check if Flow.cl is enabled
   useEffect(() => {
-    useEffect(() => { setMounted(true); }, []);    // Check if Flow.cl is enabled   useEffect(() => {     fetch('/api/flow/status')
+        fetch('/api/flow/status')
       .then(r => r.json())
       .then(data => setFlowEnabled(data.enabled))
       .catch(() => {});
@@ -105,7 +107,7 @@ export default function CheckoutClient() {
 
   // Redirect to cart if empty (except on confirmation step)
   useEffect(() => {
-    if (!mounted || (items.length === 0 && step < 3 && !orderResult)) {
+    if (mounted && items.length === 0 && step < 3 && !orderResult) {
       router.push('/carro');
     }
   }, [items, step, orderResult, router, mounted]);
