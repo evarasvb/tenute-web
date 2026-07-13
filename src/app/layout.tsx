@@ -5,6 +5,7 @@ import { CartProvider } from '@/contexts/CartContext';
 import WhatsAppButton from '@/components/layout/WhatsAppButton';
 import FloatingCartButton from '@/components/cart/FloatingCartButton';
 import { GoogleAnalytics } from '@/components/GoogleAnalytics';
+import { FacebookPixel } from '@/components/FacebookPixel';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -37,6 +38,7 @@ export default function RootLayout({
   return (
     <html lang="es">
               <GoogleAnalytics />
+            <FacebookPixel />
       <body className={`${inter.variable} font-sans antialiased`}>
         <CartProvider>
           {children}
