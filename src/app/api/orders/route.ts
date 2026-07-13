@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
+import { trackPurchaseEvent } from '@/lib/ga-events';
 
 export async function POST(request: Request) {
   try {
@@ -151,6 +152,21 @@ export async function POST(request: Request) {
       }
     }
 
+
+        // Fire GA purchase event
+        trackPurchaseEvent({
+                order_id: order.order_number,
+                value: total,
+                currency: 'CLP',
+                items: orderItems.map(item => ({
+                          product_id: item.product_id,
+                          product_name: item.product_name,
+                          product_sku: item.product_sku,
+                          quantity: item.quantity,
+                          unit_price: item.unit_price,
+                })),
+                shipping_cost: finalShippingCost,
+        });
     return NextResponse.json({ order: { ...order, items: orderItems } });
   } catch (error) {
     console.error('Unexpected error creating order:', error);
