@@ -2,7 +2,7 @@
 // Recibe notificaciones de Mercado Libre (ventas, cambios de estado, etc)
 // ML llama a este endpoint automaticamente cuando hay actividad
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       return Response.json({ ok: true, ignored: true, topic: body.topic })
     }
 
-    const supabase = createClient()
+    const supabase = createAdminClient()
 
     // Obtener token para consultar la orden en ML
     const { data: token } = await supabase
@@ -65,7 +65,6 @@ export async function POST(req: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq('channel_order_id', String(order.id))
-
       return Response.json({ ok: true, action: 'updated', order_id: order.id })
     }
 
