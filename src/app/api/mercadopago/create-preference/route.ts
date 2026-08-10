@@ -4,11 +4,15 @@ import {
   isMercadoPagoEnabled,
   type MercadoPagoItem,
 } from '@/lib/mercadopago';
+import { createAdminClient } from '@/lib/supabase';
 
 /**
  * Crea una preferencia de pago de MercadoPago Checkout Pro.
- * Recibe los items del carrito/orden y datos de la orden, y devuelve
- * el init_point al que redirigir al cliente junto con el preference_id.
+ *
+ * La orden se identifica SIEMPRE por su `order_number` (TEN-xxxx), el mismo
+ * identificador que usa el webhook y la pasarela Flow. El monto no se confía
+ * al cliente: se carga la orden en el servidor y se valida que el total de los
+ * items enviados coincida con `orders.total` antes de crear la preferencia.
  */
 export async function POST(request: NextRequest) {
   if (!isMercadoPagoEnabled()) {
@@ -20,9 +24,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { items, orderId, orderNumber, email } = body as {
+    const { items, orderNumber, email } = body as {
       items?: MercadoPagoItem[];
-      orderId?: string;
       orderNumber?: string;
       email?: string;
     };
@@ -34,22 +37,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const externalReference = orderId || orderNumber;
-    if (!externalReference) {
+    if (!orderNumber) {
       return NextResponse.json(
-        { error: 'Falta el identificador de la orden (orderId u orderNumber)' },
+        { error: 'Falta el identificador de la orden (orderNumber)' },
+        { status: 400 }
+      );
+    }
+
+    // Cargar la orden en el servidor para fijar el monto (evita que el cliente
+    // manipule los precios y pague menos de lo que vale la orden).
+    const supabase = createAdminClient();
+    const { data: order } = await supabase
+      .from('orders')
+      .select('order_number, total, status')
+      .eq('order_number', orderNumber)
+      .single();
+
+    if (!order) {
+      return NextResponse.json(
+        { error: 'Orden no encontrada' },
+        { status: 404 }
+      );
+    }
+
+    if (order.status !== 'pending') {
+      return NextResponse.json(
+        { error: 'La orden no está pendiente de pago' },
+        { status: 409 }
+      );
+    }
+
+    const itemsTotal = items.reduce(
+      (sum, it) =>
+        sum + Math.round(it.unit_price) * Math.max(1, Math.round(it.quantity)),
+      0
+    );
+
+    if (itemsTotal !== Math.round(Number(order.total))) {
+      return NextResponse.json(
+        { error: 'El monto de los items no coincide con el total de la orden' },
         { status: 400 }
       );
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin;
-    const returnUrl = orderNumber
-      ? `${baseUrl}/pedido/${orderNumber}`
-      : `${baseUrl}/checkout`;
+    const returnUrl = `${baseUrl}/pedido/${orderNumber}`;
 
     const preference = await createMercadoPagoPreference({
       items,
-      externalReference,
+      externalReference: orderNumber,
       backUrls: {
         success: returnUrl,
         failure: `${baseUrl}/checkout`,

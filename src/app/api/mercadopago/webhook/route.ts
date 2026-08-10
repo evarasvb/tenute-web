@@ -45,22 +45,37 @@ export async function POST(request: NextRequest) {
     if (payment.status === 'approved' && payment.external_reference) {
       const supabase = createAdminClient();
 
+      // external_reference es el order_number (TEN-xxxx), igual que en Flow.
       const { data: order } = await supabase
         .from('orders')
-        .select('id, status')
-        .eq('id', payment.external_reference)
+        .select('id, status, total')
+        .eq('order_number', payment.external_reference)
         .single();
 
       if (order && order.status === 'pending') {
-        await supabase
-          .from('orders')
-          .update({
-            status: 'paid',
-            payment_method: 'mercadopago',
-            payment_id: payment.id ? payment.id.toString() : paymentId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', order.id);
+        // Validar que el monto aprobado cubra el total de la orden. Evita que
+        // un comprador pague una preferencia manipulada más barata y aun así
+        // deje la orden marcada como pagada.
+        const paidAmount = Math.round(payment.transaction_amount ?? 0);
+        const orderTotal = Math.round(Number(order.total));
+
+        if (paidAmount >= orderTotal) {
+          await supabase
+            .from('orders')
+            .update({
+              status: 'paid',
+              payment_method: 'mercadopago',
+              payment_id: payment.id ? payment.id.toString() : paymentId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', order.id);
+        } else {
+          console.warn(
+            `MercadoPago webhook: pago ${paymentId} insuficiente para la orden ` +
+              `${payment.external_reference} (pagado ${paidAmount} < total ${orderTotal}); ` +
+              'la orden se deja pendiente.'
+          );
+        }
       }
     }
 

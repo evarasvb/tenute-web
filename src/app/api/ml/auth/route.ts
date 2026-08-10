@@ -1,8 +1,16 @@
 // src/app/api/ml/auth/route.ts
 // Inicia el flujo OAuth con Mercado Libre
-// Visita: https://tenute.cl/api/ml/auth para autorizar la app
+// Visita (como admin autenticado): https://tenute.cl/api/ml/auth para autorizar la app
 
-export async function GET() {
+import { NextRequest } from 'next/server'
+import { isAdminSession, unauthorizedAdminResponse } from '@/lib/admin-auth'
+
+export async function GET(request: NextRequest) {
+  // Solo un admin autenticado puede iniciar el enlace OAuth con la cuenta de ML.
+  if (!isAdminSession(request)) {
+    return unauthorizedAdminResponse()
+  }
+
   const appId = process.env.ML_APP_ID
   const redirectUri = process.env.ML_REDIRECT_URI
 

@@ -1,9 +1,18 @@
 // src/app/api/ml/callback/route.ts
 // Recibe el codigo OAuth de ML y guarda el access_token en Supabase
 
+import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase'
+import { isAdminSession, unauthorizedAdminResponse } from '@/lib/admin-auth'
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  // El callback escribe el token del vendedor con la service_role. Exigir sesión
+  // admin evita que un tercero autorice su propia cuenta de ML y secuestre las
+  // publicaciones (el flujo se inicia desde /api/ml/auth, también protegido).
+  if (!isAdminSession(req)) {
+    return unauthorizedAdminResponse()
+  }
+
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
   const error = searchParams.get('error')

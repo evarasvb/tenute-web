@@ -82,6 +82,7 @@ export async function getMercadoPagoPayment(paymentId: string): Promise<{
   id?: number;
   status?: string;
   external_reference?: string;
+  transaction_amount?: number;
 }> {
   const client = getClient();
   const payment = new Payment(client);
@@ -90,5 +91,6 @@ export async function getMercadoPagoPayment(paymentId: string): Promise<{
     id: result.id,
     status: result.status,
     external_reference: result.external_reference,
+    transaction_amount: result.transaction_amount,
   };
 }
