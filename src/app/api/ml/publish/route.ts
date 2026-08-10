@@ -2,9 +2,17 @@
 // Publica un producto de Supabase en Mercado Libre via API
 // POST { ds_product_id: string }
 
-import { createClient } from '@/lib/supabase/server'
+import { NextRequest } from 'next/server'
+import { createAdminClient } from '@/lib/supabase'
+import { isAdminSession, unauthorizedAdminResponse } from '@/lib/admin-auth'
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  // Publicar crea un anuncio real en Mercado Libre con el token del vendedor.
+  // Solo un admin autenticado puede hacerlo.
+  if (!isAdminSession(req)) {
+    return unauthorizedAdminResponse()
+  }
+
   try {
     const { ds_product_id } = await req.json()
 
@@ -12,7 +20,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'ds_product_id requerido' }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = createAdminClient()
 
     // Obtener producto con datos del proveedor
     const { data: product, error: productError } = await supabase
