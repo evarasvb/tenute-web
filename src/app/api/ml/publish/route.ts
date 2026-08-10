@@ -2,7 +2,7 @@
 // Publica un producto de Supabase en Mercado Libre via API
 // POST { ds_product_id: string }
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'ds_product_id requerido' }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = createAdminClient()
 
     // Obtener producto con datos del proveedor
     const { data: product, error: productError } = await supabase

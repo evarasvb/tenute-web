@@ -1,7 +1,7 @@
 // src/app/api/ml/callback/route.ts
 // Recibe el codigo OAuth de ML y guarda el access_token en Supabase
 
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
       )
     }
 
-    const supabase = createClient()
+    const supabase = createAdminClient()
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
 
     await supabase.from('ds_ml_tokens').upsert(
