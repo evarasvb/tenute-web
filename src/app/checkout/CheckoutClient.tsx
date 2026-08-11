@@ -19,7 +19,7 @@ function formatCLP(n: number) {
 }
 
 type ShippingMethod = 'pickup' | 'local_delivery' | 'starken';
-type PaymentMethod = 'transfer' | 'whatsapp' | 'flow';
+type PaymentMethod = 'transfer' | 'whatsapp' | 'flow' | 'mercadopago';
 
 interface CustomerInfo {
   name: string;
@@ -59,6 +59,8 @@ export default function CheckoutClient() {
   } | null>(null);
   const [flowEnabled, setFlowEnabled] = useState(false);
   const [flowLoading, setFlowLoading] = useState(false);   const [mounted, setMounted] = useState(false);
+  const [mpEnabled, setMpEnabled] = useState(false);
+  const [mpLoading, setMpLoading] = useState(false);
 
   const [customer, setCustomer] = useState<CustomerInfo>({
     name: '',
@@ -413,6 +415,95 @@ export default function CheckoutClient() {
       setError('Error de conexión. Intenta nuevamente.');
     }
     setFlowLoading(false);
+  }
+
+  async function placeOrderWithMercadoPago() {
+    setMpLoading(true);
+    setError('');
+
+    try {
+      const orderData = {
+        customer_name: customer.name.trim(),
+        customer_phone: customer.phone.trim(),
+        customer_email: customer.email.trim() || null,
+        customer_rut: customer.rut.trim() || null,
+        shipping_method: shipping.method,
+        shipping_address: shipping.address.trim() || null,
+        shipping_commune: shipping.commune.trim() || null,
+        shipping_city: shipping.city.trim() || null,
+        shipping_region: shipping.region.trim() || null,
+        shipping_cost: shippingTotal,
+        payment_method: 'mercadopago',
+        notes: shipping.notes.trim() || null,
+        items: items.map((item) => ({
+          product_id: item.id,
+          product_name: item.name,
+          product_sku: null,
+          product_image_url: item.image_url,
+          quantity: item.quantity,
+          unit_price: item.price,
+        })),
+      };
+
+      const orderRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData),
+      });
+
+      const orderResult = await orderRes.json();
+      if (!orderRes.ok) {
+        setError(orderResult.error || 'Error al crear el pedido');
+        setMpLoading(false);
+        return;
+      }
+
+      const order = orderResult.order;
+
+      const mpItems = items.map((item) => ({
+        title: item.name,
+        quantity: item.quantity,
+        unit_price: item.price,
+      }));
+
+      if (shippingTotal > 0) {
+        mpItems.push({
+          title: 'Envío',
+          quantity: 1,
+          unit_price: shippingTotal,
+        });
+      }
+
+      const mpRes = await fetch('/api/mercadopago/create-preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: mpItems,
+          orderNumber: order.order_number,
+          email: customer.email || undefined,
+        }),
+      });
+
+      const mpData = await mpRes.json();
+      if (!mpRes.ok) {
+        setError(mpData.error || 'Error al crear el pago con MercadoPago');
+        setOrderResult({
+          order_number: order.order_number,
+          id: order.id,
+          shipping_method: order.shipping_method,
+        });
+        clearCart();
+        setStep(3);
+        setMpLoading(false);
+        return;
+      }
+
+      clearCart();
+      window.location.href = mpData.initPoint;
+    } catch {
+      setError('Error de conexión. Intenta nuevamente.');
+    }
+    setMpLoading(false);
   }
 
   function buildWhatsAppMessage(
@@ -963,6 +1054,38 @@ export default function CheckoutClient() {
               </div>
             </button>
           )}
+
+          {/* MercadoPago Checkout Pro */}
+          <button
+            onClick={() => placeOrderWithMercadoPago()}
+            disabled={loading || mpLoading}
+            className="w-full p-4 rounded-lg border-2 border-gray-200 hover:border-sky-400 transition-colors text-left disabled:opacity-50"
+          >
+            <div className="flex items-center gap-3">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-sky-500"
+              >
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                <line x1="1" y1="10" x2="23" y2="10" />
+              </svg>
+              <div>
+                <p className="font-medium text-gray-900">
+                  {mpLoading ? 'Procesando...' : 'Pagar con MercadoPago'}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Tarjetas, saldo en cuenta y más — Checkout Pro
+                </p>
+              </div>
+            </div>
+          </button>
 
           {/* Transfer */}
           <button
