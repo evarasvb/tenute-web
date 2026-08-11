@@ -84,8 +84,8 @@ export default function CheckoutClient() {
       // Incluye zonas activas y las que nunca fueron marcadas (is_active null),
       // para que el despacho nacional no desaparezca si la migración insertó
       // filas sin setear is_active. Solo se ocultan las desactivadas a propósito.
-      .or('is_active.is.null,is_active.eq.true')
       .select('*')
+      .or('is_active.is.null,is_active.eq.true')
       .order('delivery_cost', { ascending: true })
       .then(({ data }) => {
         if (data) {
