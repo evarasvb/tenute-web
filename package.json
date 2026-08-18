@@ -49,6 +49,9 @@
     "react-dom": "^18",
     "resend": "^6.12.2"
   },
+  "overrides": {
+    "yocto-queue": "0.1.0"
+  },
   "devDependencies": {
     "@types/jest": "^29",
     "@types/node": "^20",
