@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/contexts/CartContext';
 import { getAdditionalImages, getVideoUrl, getYouTubeEmbedUrl } from '@/lib/product-metadata';
+import { getAvailability } from '@/lib/availability';
 
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
@@ -34,7 +35,11 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
 
-  const inStock = product.stock > 0;
+  const availability = getAvailability(product);
+  const inStock = availability.state === 'in_stock';
+  const buyable = availability.buyable;
+  const bajoPedido = availability.state === 'bajo_pedido';
+  const maxQty = bajoPedido ? 99 : product.stock;
 
   // Collect all images
   const additionalImages = getAdditionalImages(product as unknown as Record<string, unknown>);
@@ -55,7 +60,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       price: product.price,
       image_url: product.image_url,
       slug: product.slug,
-      stock: product.stock,
+      stock: bajoPedido ? 999 : product.stock,
     }, quantity);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -149,9 +154,14 @@ export default function ProductDetail({ product }: ProductDetailProps) {
             )}
           </div>
 
-          {/* Stock */}
+          {/* Disponibilidad */}
           {inStock ? (
             <span className="text-sm text-green-600 font-medium">En stock ({product.stock} disponibles)</span>
+          ) : bajoPedido ? (
+            <span className="inline-flex items-center gap-2 text-sm text-blue-600 font-medium">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              {availability.label} · lo pedimos a nuestro proveedor
+            </span>
           ) : (
             <span className="text-sm text-red-500 font-medium">Agotado</span>
           )}
@@ -169,7 +179,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
           )}
 
           {/* Add to cart */}
-          {inStock && (
+          {buyable && (
             <div className="flex items-center gap-3 mt-2">
               <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
                 <button
@@ -180,7 +190,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                 </button>
                 <span className="px-4 py-2 text-sm font-medium min-w-[3rem] text-center">{quantity}</span>
                 <button
-                  onClick={() => setQuantity(q => Math.min(product.stock, q + 1))}
+                  onClick={() => setQuantity(q => Math.min(maxQty, q + 1))}
                   className="px-3 py-2 text-gray-600 hover:bg-gray-100 transition-colors"
                 >
                   +
@@ -190,12 +200,12 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                 onClick={handleAdd}
                 className={`btn-primary flex-1 ${added ? 'bg-green-600 hover:bg-green-600' : ''}`}
               >
-                {added ? 'Agregado al carro' : 'Agregar al carro'}
+                {added ? 'Agregado al carro' : bajoPedido ? 'Pedir ahora' : 'Agregar al carro'}
               </button>
             </div>
           )}
 
-          {inStock && (
+          {buyable && (
             <a
               href={`https://wa.me/56994259157?text=${encodeURIComponent(`Hola Tenute 👋 Quiero "${product.name}" - ${formatCLP(product.price)}. ¿Está disponible?`)}`}
               target="_blank"
@@ -207,7 +217,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
             </a>
           )}
 
-          {!inStock && (
+          {!buyable && (
             <a
               href={`https://wa.me/56994259157?text=${encodeURIComponent(`Hola, me interesa el producto "${product.name}" (${product.sku || 'sin SKU'}) que está agotado. ¿Cuándo tendrán stock?`)}`}
               target="_blank"
@@ -221,10 +231,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       </div>
 
       {/* Barra fija de compra en celular */}
-      {inStock && (
+      {buyable && (
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 flex items-center gap-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
           <div className="flex flex-col leading-tight">
-            <span className="text-[11px] text-gray-500">Precio</span>
+            <span className="text-[11px] text-gray-500">{bajoPedido ? availability.label : 'Precio'}</span>
             <span className="text-lg font-bold text-gray-900">{formatCLP(product.price)}</span>
           </div>
           <button
@@ -233,7 +243,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
               added ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'
             }`}
           >
-            {added ? '✓ Agregado' : 'Agregar al carro'}
+            {added ? '✓ Agregado' : bajoPedido ? 'Pedir ahora' : 'Agregar al carro'}
           </button>
         </div>
       )}

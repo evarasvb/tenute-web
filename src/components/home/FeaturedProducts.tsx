@@ -4,7 +4,7 @@ import ProductCard from './ProductCard';
 async function getFeaturedProducts() {
   const { data } = await supabase
     .from('products')
-    .select('id, name, slug, price, compare_price, image_url, stock, categories(name)')
+    .select('id, name, slug, price, compare_price, image_url, stock, metadata, categories(name)')
     .eq('is_featured', true)
     .eq('active', true)
     .order('name')
@@ -14,7 +14,7 @@ async function getFeaturedProducts() {
 
   const { data: fallback } = await supabase
     .from('products')
-    .select('id, name, slug, price, compare_price, image_url, stock, categories(name)')
+    .select('id, name, slug, price, compare_price, image_url, stock, metadata, categories(name)')
     .not('image_url', 'is', null)
     .neq('image_url', '')
     .eq('active', true)
