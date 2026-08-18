@@ -219,6 +219,24 @@ export default function ProductDetail({ product }: ProductDetailProps) {
           )}
         </div>
       </div>
+
+      {/* Barra fija de compra en celular */}
+      {inStock && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 flex items-center gap-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+          <div className="flex flex-col leading-tight">
+            <span className="text-[11px] text-gray-500">Precio</span>
+            <span className="text-lg font-bold text-gray-900">{formatCLP(product.price)}</span>
+          </div>
+          <button
+            onClick={handleAdd}
+            className={`flex-1 py-3 rounded-lg font-semibold text-sm text-white transition-colors ${
+              added ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800'
+            }`}
+          >
+            {added ? '✓ Agregado' : 'Agregar al carro'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
