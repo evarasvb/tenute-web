@@ -42,7 +42,7 @@ async function getRelatedProducts(product: {
   id: string | number;
   category_id: number | null;
 }) {
-  const RELATED_FIELDS = 'id, name, slug, price, compare_price, image_url, stock, categories(name)';
+  const RELATED_FIELDS = 'id, name, slug, price, compare_price, image_url, stock, metadata, categories(name)';
   const collected: any[] = [];
   const seen = new Set<string>([String(product.id)]);
 
