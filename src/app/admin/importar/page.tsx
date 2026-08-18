@@ -1,9 +1,124 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+}
+
+/* ---- Sección: subir lista de precios (CSV) ---- */
+function PriceListUploader() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [margin, setMargin] = useState(60);
+  const [mode, setMode] = useState<'margen_venta' | 'recargo'>('margen_venta');
+  const [publish, setPublish] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<any>(null);
+  const [result, setResult] = useState<any>(null);
+
+  async function send(commit: boolean) {
+    if (!file) { setError('Elige un archivo CSV'); return; }
+    setBusy(true); setError(null); if (commit) setResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('margin', String(margin));
+      fd.append('mode', mode);
+      fd.append('publish', String(publish));
+      fd.append('commit', String(commit));
+      const r = await fetch('/api/admin/import-price-list', { method: 'POST', body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || 'Error');
+      if (commit) { setResult(d); setPreview(null); }
+      else setPreview(d);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 space-y-4">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900">Subir lista de precios (CSV)</h3>
+        <p className="text-sm text-gray-500 mt-0.5">
+          Columnas: <code className="text-xs bg-gray-100 px-1 rounded">sku, name, neto</code>. Actualiza precio y costo de los que ya tienes (sin tocar el stock) y agrega los nuevos como “bajo pedido”.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <label className="block sm:col-span-2">
+          <span className="text-xs font-medium text-gray-500">Archivo CSV</span>
+          <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }}
+            className="mt-1 w-full text-sm border border-gray-300 rounded-lg px-3 py-2 file:mr-3 file:rounded file:border-0 file:bg-blue-50 file:px-3 file:py-1 file:text-blue-600" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-gray-500">Margen %</span>
+          <input type="number" min={0} max={99} value={margin} onChange={(e) => setMargin(Number(e.target.value))}
+            className="mt-1 w-full text-sm border border-gray-300 rounded-lg px-3 py-2" />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-gray-500">Tipo de margen</span>
+          <select value={mode} onChange={(e) => setMode(e.target.value as any)}
+            className="mt-1 w-full text-sm border border-gray-300 rounded-lg px-2 py-2 bg-white">
+            <option value="margen_venta">Sobre precio de venta (÷)</option>
+            <option value="recargo">Recargo sobre costo (×)</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+          <input type="checkbox" checked={publish} onChange={(e) => setPublish(e.target.checked)} className="accent-blue-600" />
+          Publicar los nuevos de inmediato
+        </label>
+        <button onClick={() => send(false)} disabled={busy || !file}
+          className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+          {busy ? 'Procesando…' : 'Previsualizar'}
+        </button>
+        {preview && (
+          <button onClick={() => send(true)} disabled={busy}
+            className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50">
+            Confirmar: actualizar {preview.actualizar} y agregar {preview.insertar}
+          </button>
+        )}
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>}
+
+      {preview && (
+        <div className="text-sm text-gray-600">
+          <p className="mb-2">{preview.total} filas · <span className="text-blue-600">{preview.actualizar} a actualizar</span> · <span className="text-green-600">{preview.insertar} nuevos</span> · margen {preview.margin}% ({preview.mode === 'margen_venta' ? 'sobre venta' : 'recargo'}).</p>
+          <div className="overflow-x-auto">
+            <table className="text-xs w-full">
+              <thead><tr className="text-gray-400 text-left"><th className="p-1">SKU</th><th className="p-1">Producto</th><th className="p-1 text-right">Neto</th><th className="p-1 text-right">Precio venta</th><th className="p-1">Estado</th></tr></thead>
+              <tbody>
+                {preview.sample.map((s: any) => (
+                  <tr key={s.sku} className="border-t border-gray-100">
+                    <td className="p-1 text-gray-500">{s.sku}</td>
+                    <td className="p-1 text-gray-700 truncate max-w-[220px]">{s.name}</td>
+                    <td className="p-1 text-right tabular-nums text-gray-500">{formatCLP(s.neto)}</td>
+                    <td className="p-1 text-right tabular-nums font-semibold">{formatCLP(s.price)}</td>
+                    <td className="p-1">{s.nuevo ? <span className="text-green-600">nuevo</span> : <span className="text-blue-600">actualiza</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-800">
+          ✅ Listo: <b>{result.updated}</b> actualizados, <b>{result.inserted}</b> nuevos agregados.
+          {result.errorCount > 0 && <> · {result.errorCount} con error.</>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface Row {
@@ -82,6 +197,14 @@ export default function ImportarPage() {
         <p className="text-sm text-gray-500 mt-1">
           Trae productos de tus proveedores y publícalos <span className="font-medium">bajo pedido</span>, con precio calculado automáticamente por margen. No necesitas tenerlos en bodega.
         </p>
+      </div>
+
+      {/* Subir lista de precios (CSV) — Vanni, etc. */}
+      <PriceListUploader />
+
+      <div className="border-t border-gray-200 pt-2">
+        <h3 className="text-base font-semibold text-gray-900">Buscar en proveedor online</h3>
+        <p className="text-sm text-gray-500 mt-0.5 mb-3">Dimerc / Prisa por su catálogo web.</p>
       </div>
 
       {/* Formulario de búsqueda */}
