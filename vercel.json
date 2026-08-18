@@ -6,7 +6,7 @@
     }
   ],
   "functions": {
-    "api/cron/refresh-competitor-prices": {
+    "src/app/api/cron/refresh-competitor-prices/route.ts": {
       "maxDuration": 800
     }
   }
