@@ -6,7 +6,7 @@
     }
   ],
   "functions": {
-    "/api/cron/refresh-competitor-prices": {
+    "api/cron/refresh-competitor-prices": {
       "maxDuration": 800
     }
   }
