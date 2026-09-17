@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/contexts/CartContext';
+import { getAvailability } from '@/lib/availability';
 
 function formatCLP(n: number) {
   return n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
@@ -17,6 +18,7 @@ interface ProductCardProps {
     compare_price?: number | null;
     image_url?: string | null;
     stock?: number;
+    metadata?: unknown;
     categories?: { name: string } | null;
   };
 }
@@ -26,6 +28,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   const [added, setAdded] = useState(false);
   const p = product;
   const stock = p.stock ?? 0;
+  const availability = getAvailability(p);
 
   function handleAdd(e: React.MouseEvent) {
     e.preventDefault();
@@ -36,7 +39,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       price: p.price,
       image_url: p.image_url || null,
       slug: p.slug,
-      stock: stock,
+      stock: availability.state === 'bajo_pedido' ? 999 : stock,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
@@ -75,7 +78,13 @@ export default function ProductCard({ product }: ProductCardProps) {
             <p className="text-base font-bold text-gray-900">{formatCLP(p.price)}</p>
           )}
         </div>
-        {stock <= 0 ? (
+        {availability.state === 'bajo_pedido' && (
+          <span className="text-[11px] text-blue-600 font-medium flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            {availability.label}
+          </span>
+        )}
+        {!availability.buyable ? (
           <span className="text-xs text-red-500 font-medium">Agotado</span>
         ) : (
           <button

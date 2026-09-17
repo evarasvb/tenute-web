@@ -35,7 +35,17 @@ export default function CartClient() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
+      {/* Columna izquierda: items + envío */}
+      <div className="lg:col-span-2 space-y-6">
+      <div className="flex items-center justify-between">
+        <Link href="/catalogo" className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5" /><path d="M12 19l-7-7 7-7" /></svg>
+          Seguir comprando
+        </Link>
+        <span className="text-sm text-gray-500">{totalItems} {totalItems === 1 ? 'producto' : 'productos'}</span>
+      </div>
+
       {/* Items */}
       <div className="space-y-3">
         {items.map(item => (
@@ -85,8 +95,10 @@ export default function CartClient() {
 
       {/* Shipping */}
       <ShippingEstimator />
+      </div>
 
-      {/* Summary */}
+      {/* Columna derecha: resumen (sticky en desktop) */}
+      <div className="mt-6 lg:mt-0 lg:sticky lg:top-6">
       <div className="card p-6">
         <div className="flex justify-between items-center mb-2">
           <span className="text-gray-600">Productos ({totalItems})</span>
@@ -138,6 +150,7 @@ export default function CartClient() {
             Ver políticas de cambio y envío
           </Link>
         </div>
+      </div>
       </div>
     </div>
   );

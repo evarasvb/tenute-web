@@ -60,6 +60,8 @@ export default function ProductEditorPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [publishingIG, setPublishingIG] = useState(false);
   const [igResult, setIgResult] = useState<{ success?: boolean; error?: string } | null>(null);
+  const [publishingML, setPublishingML] = useState(false);
+  const [mlResult, setMlResult] = useState<{ permalink?: string; error?: string } | null>(null);
   const [igConfigured, setIgConfigured] = useState<boolean | null>(null);
   const [suggestingEan, setSuggestingEan] = useState(false);
   const [eanSuggestions, setEanSuggestions] = useState<Array<{
@@ -274,6 +276,28 @@ export default function ProductEditorPage() {
     setPublishingIG(false);
   }
 
+  async function handlePublishML() {
+    if (!id || isNew) return;
+    setPublishingML(true);
+    setMlResult(null);
+    try {
+      const res = await fetch('/api/ml/publish-product', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMlResult({ error: data.error || 'Error publicando en Mercado Libre' });
+      } else {
+        setMlResult({ permalink: data.permalink });
+      }
+    } catch {
+      setMlResult({ error: 'Error de conexión' });
+    }
+    setPublishingML(false);
+  }
+
   async function handleSuggestEan() {
     setSuggestingEan(true);
     setError('');
@@ -401,6 +425,16 @@ export default function ProductEditorPage() {
                 {publishingIG ? 'Publicando...' : 'Instagram'}
               </button>
             )}
+            {product.image_url && (
+              <button
+                onClick={handlePublishML}
+                disabled={publishingML}
+                title="Publicar en Mercado Libre"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-400 text-gray-900 rounded-lg text-xs font-semibold hover:bg-yellow-500 disabled:opacity-50 transition-all"
+              >
+                {publishingML ? 'Publicando...' : 'Mercado Libre'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -422,6 +456,16 @@ export default function ProductEditorPage() {
       {igResult?.error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
           Instagram: {igResult.error}
+        </div>
+      )}
+      {mlResult?.permalink && (
+        <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-lg text-sm">
+          ¡Publicado en Mercado Libre! <a href={mlResult.permalink} target="_blank" rel="noopener noreferrer" className="underline font-medium">Ver publicación</a>
+        </div>
+      )}
+      {mlResult?.error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          Mercado Libre: {mlResult.error}
         </div>
       )}
       {igConfigured === false && (

@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
   const barcode = searchParams.get('barcode') || '';
   const minCost = searchParams.get('min_cost');
   const maxCost = searchParams.get('max_cost');
+  const source = searchParams.get('source') || '';
   const sortBy = searchParams.get('sort_by') || 'name';
   const sortDir = (searchParams.get('sort_dir') || 'asc') as 'asc' | 'desc';
 
@@ -109,6 +110,10 @@ export async function GET(request: NextRequest) {
     }
     if (maxCost) {
       query = query.lte('cost_price', parseInt(maxCost));
+    }
+    if (source) {
+      // Filtra por origen guardado en metadata (ej. 'proveedor' para bajo pedido).
+      query = query.filter('metadata->>source', 'eq', source);
     }
 
     query = query.order(sortBy, { ascending: sortDir === 'asc' });
