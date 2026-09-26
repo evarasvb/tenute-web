@@ -102,6 +102,8 @@ export default function AdminProductsPage() {
   const [eanBulkMessage, setEanBulkMessage] = useState('');
   const [fillingImages, setFillingImages] = useState(false);
   const [fillMessage, setFillMessage] = useState('');
+  const [publishingMl, setPublishingMl] = useState(false);
+  const [mlMessage, setMlMessage] = useState('');
   const [imageIssues, setImageIssues] = useState<Record<string, ProductImageIssue[]>>({});
   const [imageAuditLoading, setImageAuditLoading] = useState(false);
   const [imageAuditError, setImageAuditError] = useState<string | null>(null);
@@ -418,6 +420,48 @@ export default function AdminProductsPage() {
     }
   }
 
+  // Publica en Mercado Libre por lote los productos publicables (con foto,
+  // activos, aún no publicados), en tandas chicas. Requiere token de ML.
+  async function handlePublishMlBatch() {
+    if (!confirm('Publicar en Mercado Libre los productos CON foto que aún no están publicados? Crea anuncios públicos reales. Se hace por lotes; deja la pestaña abierta.')) return;
+    setPublishingMl(true);
+    setMlMessage('Buscando productos publicables…');
+    try {
+      const params = new URLSearchParams({ has_image: 'true', active: 'true', limit: '5000' });
+      const res = await fetch('/api/admin/products?' + params);
+      const data = await res.json();
+      const list = (data.products || data.data || []) as Array<{ id: string | number; metadata?: unknown }>;
+      const ids = list
+        .filter((p) => !((p.metadata as Record<string, unknown> | null)?.ml_item_id))
+        .map((p) => String(p.id));
+      if (ids.length === 0) { setMlMessage('No hay productos pendientes de publicar. 🎉'); return; }
+      let processed = 0, published = 0, failed = 0;
+      const BATCH = 10;
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const chunk = ids.slice(i, i + BATCH);
+        setMlMessage(`Publicando ${processed}/${ids.length}… (ok: ${published}, con error: ${failed})`);
+        try {
+          const r = await fetch('/api/ml/publish-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productIds: chunk }),
+          });
+          const d = await r.json();
+          if (r.status === 401) { setMlMessage(d.error || 'Falta autorizar Mercado Libre (/api/ml/auth).'); return; }
+          published += Number(d?.published) || 0;
+          failed += Number(d?.failed) || 0;
+        } catch { failed += chunk.length; }
+        processed += chunk.length;
+      }
+      setMlMessage(`Listo: ${published} publicados en ML, ${failed} con error, de ${ids.length} pendientes.`);
+      fetchProducts();
+    } catch (err) {
+      setMlMessage('Error: ' + (err instanceof Error ? err.message : 'desconocido'));
+    } finally {
+      setPublishingMl(false);
+    }
+  }
+
   async function loadBulkEanSuggestions() {
     setEanBulkLoading(true);
     setEanBulkMessage('');
@@ -535,6 +579,11 @@ export default function AdminProductsPage() {
             {fillingImages ? 'Cargando fotos…' : 'Rellenar fotos Vanni'}
           </button>
           {fillMessage && <span className="w-full text-xs text-gray-600">{fillMessage}</span>}
+          <button onClick={handlePublishMlBatch} disabled={publishingMl} className="inline-flex items-center gap-2 px-4 py-2 border border-yellow-500 bg-yellow-400 text-gray-900 text-sm font-semibold rounded-lg hover:bg-yellow-500 disabled:opacity-50 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+            {publishingMl ? 'Publicando en ML…' : 'Publicar en ML (lote)'}
+          </button>
+          {mlMessage && <span className="w-full text-xs text-gray-600">{mlMessage}</span>}
           <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-2 px-4 py-2 border border-green-600 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 disabled:opacity-50 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             {exporting ? 'Exportando...' : 'Excel'}
