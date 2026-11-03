@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const supabase = createAdminClient();
     const { data: order } = await supabase
       .from('orders')
-      .select('order_number, total, status')
+      .select('id, order_number, total, status')
       .eq('order_number', orderNumber)
       .single();
 
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || request.nextUrl.origin;
-    const returnUrl = `${baseUrl}/pedido/${orderNumber}`;
+    const returnUrl = `${baseUrl}/pedido/${encodeURIComponent(order.order_number)}?t=${encodeURIComponent(order.id)}`;
 
     const preference = await createMercadoPagoPreference({
       items,
