@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase';
 import { getFlowPaymentStatus, isFlowEnabled } from '@/lib/flow';
 
 /**
@@ -23,7 +24,16 @@ export async function GET(request: NextRequest) {
 
     // Redirect to order detail page
     if (orderNumber) {
-      return NextResponse.redirect(new URL(`/pedido/${orderNumber}`, request.url));
+      const { data: order, error } = await createAdminClient()
+        .from('orders')
+        .select('id, order_number')
+        .eq('order_number', orderNumber)
+        .single();
+      if (!error && order) {
+        const returnUrl = new URL(`/pedido/${encodeURIComponent(order.order_number)}`, request.url);
+        returnUrl.searchParams.set('t', order.id);
+        return NextResponse.redirect(returnUrl);
+      }
     }
 
     return NextResponse.redirect(new URL('/catalogo', request.url));

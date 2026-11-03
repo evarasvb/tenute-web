@@ -23,13 +23,16 @@ const SHIPPING_LABELS: Record<string, string> = {
   starken: 'Envío nacional (Starken)',
 };
 
-export default function OrderDetailClient({ orderNumber }: { orderNumber: string }) {
+export default function OrderDetailClient({ orderNumber, token }: { orderNumber: string; token?: string }) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch(`/api/orders/${orderNumber}`)
+    setLoading(true);
+    setError('');
+    setOrder(null);
+    fetch(`/api/orders/${encodeURIComponent(orderNumber)}${token ? `?t=${encodeURIComponent(token)}` : ''}`, { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data.order) {
@@ -40,7 +43,7 @@ export default function OrderDetailClient({ orderNumber }: { orderNumber: string
       })
       .catch(() => setError('Error al cargar el pedido'))
       .finally(() => setLoading(false));
-  }, [orderNumber]);
+  }, [orderNumber, token]);
 
   if (loading) {
     return (

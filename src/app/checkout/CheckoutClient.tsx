@@ -1249,7 +1249,7 @@ export default function CheckoutClient() {
 
         <div className="flex flex-col gap-3">
           <Link
-            href={`/pedido/${orderResult.order_number}`}
+            href={`/pedido/${orderResult.order_number}?t=${encodeURIComponent(orderResult.id)}`}
             className="btn-primary text-center"
           >
             Ver detalle del pedido
