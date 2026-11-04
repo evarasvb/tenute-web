@@ -1,10 +1,11 @@
+import { isAdminCookieStore } from '@/lib/admin-auth';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase';
 
 function checkAuth() {
   const cookieStore = cookies();
-  return cookieStore.get('admin_session')?.value === 'authenticated';
+  return isAdminCookieStore(cookieStore);
 }
 
 export async function GET(

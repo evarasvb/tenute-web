@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { csvToObjects } from '@/lib/csv';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 function checkAuth(request: NextRequest) {
-  return request.cookies.get('admin_session')?.value === 'authenticated';
+  return isAdminSession(request);
 }
 
 /** Precio de venta según el modo de margen. */

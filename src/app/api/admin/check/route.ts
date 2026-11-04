@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminSession } from '@/lib/admin-auth';
 
 export async function GET(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value === 'authenticated') {
+  if (isAdminSession(request)) {
     return NextResponse.json({ authenticated: true });
   }
   return NextResponse.json({ authenticated: false }, { status: 401 });

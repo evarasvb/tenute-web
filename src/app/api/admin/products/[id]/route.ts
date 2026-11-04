@@ -1,11 +1,11 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { buildMetadata, getWarehouseStock, parseMetadata } from '@/lib/product-metadata';
 import { isUniqueConstraintError, normalizeBarcode, validateBarcode } from '@/lib/validators';
 
 function checkAuth(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  if (!isAdminSession(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   return null;
 }
 

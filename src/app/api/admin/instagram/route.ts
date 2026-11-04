@@ -1,8 +1,9 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 
 function checkAuth(req: NextRequest) {
-  return req.cookies.get('admin_session')?.value === 'authenticated';
+  return isAdminSession(req);
 }
 
 const IG_ACCESS_TOKEN = process.env.INSTAGRAM_ACCESS_TOKEN;

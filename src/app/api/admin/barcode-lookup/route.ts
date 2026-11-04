@@ -1,9 +1,10 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { isValidGtinDigits, normalizeBarcodeDigits } from '@/lib/ean';
 
 function checkAuth(req: NextRequest) {
-    return req.cookies.get('admin_session')?.value === 'authenticated';
+    return isAdminSession(req);
 }
 
 export interface BarcodeLookupResult {

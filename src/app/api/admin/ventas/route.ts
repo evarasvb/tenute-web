@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 
@@ -12,7 +13,7 @@ const WAREHOUSE_FIELD: Record<string, 'stock_ocoa' | 'stock_local21'> = {
 };
 
 function checkAuth(req: NextRequest) {
-    return req.cookies.get('admin_session')?.value === 'authenticated';
+    return isAdminSession(req);
 }
 
 export async function GET(request: NextRequest) {

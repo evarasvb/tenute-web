@@ -1,9 +1,9 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  if (!isAdminSession(request)) return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   const supabase = createAdminClient();
   const { data: products } = await supabase
     .from('products').select('id, price, cost_price, stock, stock_ocoa, stock_local21, image_url, active');
