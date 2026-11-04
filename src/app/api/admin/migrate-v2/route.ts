@@ -1,8 +1,8 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 
 function checkAuth(req: NextRequest) {
-  const cookie = req.cookies.get('admin_session');
-  return cookie?.value === 'authenticated';
+  return isAdminSession(req);
 }
 
 const MIGRATION_V2_SQL = `

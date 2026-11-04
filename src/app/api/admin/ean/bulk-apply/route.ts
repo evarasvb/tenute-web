@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { validateEAN13 } from '@/lib/ean';
@@ -15,7 +16,7 @@ function normaliseBarcode(raw: string): string {
 const MAX_BATCH = 50;
 
 function checkAuth(req: NextRequest) {
-  return req.cookies.get('admin_session')?.value === 'authenticated';
+  return isAdminSession(req);
 }
 
 interface Assignment {

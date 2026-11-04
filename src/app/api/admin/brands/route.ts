@@ -1,9 +1,9 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') {
+  if (!isAdminSession(request)) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 

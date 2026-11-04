@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { fetchSupplierProducts, SUPPLIERS, type SupplierProduct } from '@/lib/suppliers/catalog';
@@ -33,8 +34,7 @@ async function findExisting(
 }
 
 export async function POST(request: NextRequest) {
-  const session = request.cookies.get('admin_session');
-  if (session?.value !== 'authenticated') return unauthorized();
+  if (!isAdminSession(request)) return unauthorized();
 
   let body: any;
   try { body = await request.json(); } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }); }

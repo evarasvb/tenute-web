@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { csvToObjects } from '@/lib/csv';
@@ -5,7 +6,7 @@ import { cleanBarcodeForWrite } from '@/lib/barcode';
 import { isUniqueConstraintError } from '@/lib/validators';
 
 function checkAuth(request: NextRequest) {
-  return request.cookies.get('admin_session')?.value === 'authenticated';
+  return isAdminSession(request);
 }
 
 function toNumber(v: string | undefined): number | null {

@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { normalizeBarcodeDigits, validateEAN13 } from '@/lib/ean';
@@ -28,7 +29,7 @@ function normaliseBarcode(raw: string): string {
 }
 
 function checkAuth(req: NextRequest) {
-  return req.cookies.get('admin_session')?.value === 'authenticated';
+  return isAdminSession(req);
 }
 
 export async function POST(request: NextRequest) {

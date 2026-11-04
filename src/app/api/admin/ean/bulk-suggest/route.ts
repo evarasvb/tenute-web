@@ -1,3 +1,4 @@
+import { isAdminSession } from '@/lib/admin-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase';
 import { validateEAN13, normalizeBarcodeDigits } from '@/lib/ean';
@@ -27,7 +28,7 @@ function rateLimit(ip: string): boolean {
 }
 
 function checkAuth(req: NextRequest) {
-  return req.cookies.get('admin_session')?.value === 'authenticated';
+  return isAdminSession(req);
 }
 
 export async function POST(request: NextRequest) {
